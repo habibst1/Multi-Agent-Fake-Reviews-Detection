@@ -1,0 +1,12 @@
+# Ignore environment variables file
+.env
+
+agents/__pycache__
+
+# Ignore the Hotel Reviews data folder
+Hotel Reviews with claims/
+
+Final Pipeline/
+
+context.txt
+

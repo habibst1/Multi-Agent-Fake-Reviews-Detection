@@ -1,0 +1,684 @@
+{
+    "hotel_name": "Burj Al Arab",
+    "hotel_review": "Overpriced hotel in Dubai. Located 15 minutes from Dubai Mall. Staff service was excellent but rooms felt outdated. Food quality was poor. 20 Kilometers from the airport",
+    "overall_verdict": "false",
+    "claims_results": [
+        {
+            "claim_id": "claim_1",
+            "claim_text": "Located 15 minutes from Dubai Mall",
+            "claim_type": "location_general",
+            "claim_nature": "factual",
+            "verdict": "false",
+            "checker_used": "location",
+            "confidence_score": 0.9,
+            "evidence": {
+                "hotel_coordinates": {
+                    "lat": 25.1413271,
+                    "lng": 55.1853967
+                },
+                "extracted_destination": "Dubai Mall",
+                "destination_type": "specific",
+                "destination_coordinates": {
+                    "lat": 25.1205473,
+                    "lng": 55.2027748
+                },
+                "distance_km": 3.1,
+                "walking_duration_min": 37.2,
+                "reasoning": "The calculated walking duration of 37.2 minutes exceeds the allowed margin for a 15-minute claim, which would be 15 + 4.5 minutes (30% of 15 minutes) = 19.5 minutes."
+            },
+            "additional_data": {}
+        },
+        {
+            "claim_id": "claim_2",
+            "claim_text": "20 Kilometers from the airport",
+            "claim_type": "location_general",
+            "claim_nature": "factual",
+            "verdict": "false",
+            "checker_used": "location",
+            "confidence_score": 0.8,
+            "evidence": {
+                "hotel_coordinates": {
+                    "lat": 25.1413271,
+                    "lng": 55.1853967
+                },
+                "extracted_destination": "airport",
+                "destination_type": "specific",
+                "destination_coordinates": {
+                    "lat": 25.0903007,
+                    "lng": 55.1328844
+                },
+                "distance_km": 9.34,
+                "walking_duration_min": 112.1,
+                "reasoning": "The calculated distance of 9.34 km is less than the claimed 20 kilometers, and the walking duration of 112.1 minutes is within the margin for being considered 'far', but significantly below the claimed distance."
+            },
+            "additional_data": {}
+        },
+        {
+            "claim_id": "claim_3",
+            "claim_text": "Overpriced hotel in Dubai",
+            "claim_type": "hotel_prices",
+            "claim_nature": "opinion",
+            "verdict": "false",
+            "checker_used": "review",
+            "confidence_score": 0.9,
+            "evidence": {
+                "matched_reviews": [
+                    {
+                        "text": "Positive: We have been in other hotels for a day in similar price range, but Burj Al Arab is the only hotel I felt like I was not overpaying.",
+                        "similarity_score": 0.7206234931945801,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Highly recommended for anyone seeking a luxurious and heartfelt experience in Dubai.",
+                        "similarity_score": 0.6574146151542664,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: The most luxurious hotel there is",
+                        "similarity_score": 0.5824007987976074,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Best hotel I have ever stayed in.",
+                        "similarity_score": 0.48764485120773315,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "BEST HOTEL I HAVE stayed IN MY LIFE!",
+                        "similarity_score": 0.48653286695480347,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: the luxurious decor of the room and the entire hotel",
+                        "similarity_score": 0.4788823425769806,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: Great hotel and service",
+                        "similarity_score": 0.4651804566383362,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: Great hotel and service",
+                        "similarity_score": 0.4651804566383362,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: The cleanest hotel I have ever visited",
+                        "similarity_score": 0.4610227346420288,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: Amazing hotel",
+                        "similarity_score": 0.4608224034309387,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Hotel Burj Al Arab has exceptionally high prices for stay",
+                        "similarity_score": 0.6596660614013672,
+                        "stance": "supports",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "very expensive compared to other much newer and alive hotels",
+                        "similarity_score": 0.6202480792999268,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Hotel Burj Al Arab has exceptionally high prices for food and drink",
+                        "similarity_score": 0.6183221340179443,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "The hotel needs major update and refurbishment. Negative:",
+                        "similarity_score": 0.485457181930542,
+                        "stance": "supports",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Aging hotel",
+                        "similarity_score": 0.4637302756309509,
+                        "stance": "neutral",
+                        "confidence": 0.7,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: Amenities are a bit underwhelming when compared to various previous visits",
+                        "similarity_score": 0.444467157125473,
+                        "stance": "neutral",
+                        "confidence": 0.7,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: In a hotel of this level, there should be more privacy, there are a lot of strangers at the pool who bought a day pass...",
+                        "similarity_score": 0.4146295189857483,
+                        "stance": "neutral",
+                        "confidence": 0.7,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: With it being such an iconic hotel some clientele can come across as a little brash",
+                        "similarity_score": 0.39414268732070923,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: I loved everything about the hotel",
+                        "similarity_score": 0.3931786119937897,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "a hotel in this level should have fast solutions in place to solve a small issue like this",
+                        "similarity_score": 0.38457033038139343,
+                        "stance": "supports",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    }
+                ],
+                "api_error_count": 0
+            },
+            "additional_data": {}
+        },
+        {
+            "claim_id": "claim_4",
+            "claim_text": "Staff service was excellent",
+            "claim_type": "service_general",
+            "claim_nature": "opinion",
+            "verdict": "true",
+            "checker_used": "review",
+            "confidence_score": 0.9,
+            "evidence": {
+                "matched_reviews": [
+                    {
+                        "text": "The staff were fantastic. Positive:",
+                        "similarity_score": 0.779057502746582,
+                        "stance": "supports",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Staff were helpful Positive:",
+                        "similarity_score": 0.7416974902153015,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: The staff and service was over the top",
+                        "similarity_score": 0.741034984588623,
+                        "stance": "supports",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "The staff were wonderful — attentive, kind, and professional throughout.",
+                        "similarity_score": 0.7189223170280457,
+                        "stance": "supports",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "The hospitality of the staff was sooper. Positive:",
+                        "similarity_score": 0.6792600750923157,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: The kindness of the staff there",
+                        "similarity_score": 0.6712254285812378,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Service was top notch. (Positive)",
+                        "similarity_score": 0.6672431230545044,
+                        "stance": "supports",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "The butler service was great!",
+                        "similarity_score": 0.6622734069824219,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: The attention of the excellent staff",
+                        "similarity_score": 0.6379250288009644,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: especially the staff",
+                        "similarity_score": 0.6341472268104553,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Negative: the staff work so hard",
+                        "similarity_score": 0.6269546747207642,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: Service and staff",
+                        "similarity_score": 0.6011658906936646,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "The service and attention of the staff at Burj Al Arab was the worst of all experiences. Positive:",
+                        "similarity_score": 0.4919334053993225,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: the room service was not fast",
+                        "similarity_score": 0.4675505757331848,
+                        "stance": "contradicts",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Our personal butler service did not work as advertised.",
+                        "similarity_score": 0.4360140562057495,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Cold Distant Staff",
+                        "similarity_score": 0.4225960373878479,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: We liked everything, we would have appreciated that the complementary services of food and drinks supplemented by the butler were not so limited.",
+                        "similarity_score": 0.35999709367752075,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "They handled the incident with little professionalism",
+                        "similarity_score": 0.34923669695854187,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: I loved everything about the hotel",
+                        "similarity_score": 0.29472631216049194,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: Amenities are a bit underwhelming when compared to various previous visits",
+                        "similarity_score": 0.27786785364151,
+                        "stance": "neutral",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    }
+                ],
+                "api_error_count": 0
+            },
+            "additional_data": {}
+        },
+        {
+            "claim_id": "claim_5",
+            "claim_text": "rooms felt outdated",
+            "claim_type": "rooms_design_and_features",
+            "claim_nature": "opinion",
+            "verdict": "unable_to_verify",
+            "checker_used": "review",
+            "confidence_score": 0.95,
+            "evidence": {
+                "matched_reviews": [
+                    {
+                        "text": "rooms are the best I have seen so far",
+                        "similarity_score": 0.7152423858642578,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Room was huge. (Positive)",
+                        "similarity_score": 0.5236014127731323,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: the iconic room",
+                        "similarity_score": 0.5048954486846924,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "The room is huge",
+                        "similarity_score": 0.4988870620727539,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: the room",
+                        "similarity_score": 0.498759388923645,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: the room was outstanding",
+                        "similarity_score": 0.47939348220825195,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: I loved the room and the whole place.",
+                        "similarity_score": 0.4778263568878174,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: the luxurious decor of the room and the entire hotel",
+                        "similarity_score": 0.4755805730819702,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "The suites were a dream",
+                        "similarity_score": 0.46730706095695496,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: The room is a beautiful two-story suite, with an incredible design, excellent amenities and services offered by the hotel, I definitely hope to return soon.",
+                        "similarity_score": 0.464567095041275,
+                        "stance": "contradicts",
+                        "confidence": 0.95,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Negative: Rest room and other items is old in the room",
+                        "similarity_score": 0.6190046072006226,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: the room service was not fast",
+                        "similarity_score": 0.5803823471069336,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: I had to wait an a hour to get my room",
+                        "similarity_score": 0.5311834216117859,
+                        "stance": "neutral",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "The hotel needs major update and refurbishment. Negative:",
+                        "similarity_score": 0.5189038515090942,
+                        "stance": "supports",
+                        "confidence": 0.95,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Aging hotel",
+                        "similarity_score": 0.5037956237792969,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "room that does not feel super good",
+                        "similarity_score": 0.4619113802909851,
+                        "stance": "supports",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Though again, the furniture could use some upgrading, as it felt somewhat worn.",
+                        "similarity_score": 0.46148914098739624,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: I loved everything, but there was one time I wished the room had balcony.",
+                        "similarity_score": 0.44262605905532837,
+                        "stance": "neutral",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "The decor and furnishings in some places felt a bit dated and worn.",
+                        "similarity_score": 0.42129093408584595,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: The lighting sounds inside the room are very annoying",
+                        "similarity_score": 0.41636961698532104,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    }
+                ],
+                "api_error_count": 0
+            },
+            "additional_data": {}
+        },
+        {
+            "claim_id": "claim_6",
+            "claim_text": "Food quality was poor",
+            "claim_type": "food_drinks_quality",
+            "claim_nature": "opinion",
+            "verdict": "false",
+            "checker_used": "review",
+            "confidence_score": 0.9,
+            "evidence": {
+                "matched_reviews": [
+                    {
+                        "text": "food was great Positive:",
+                        "similarity_score": 0.6666028499603271,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: food was great",
+                        "similarity_score": 0.6167631149291992,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "The food was fantastic. Positive:",
+                        "similarity_score": 0.6006453037261963,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: especially the food",
+                        "similarity_score": 0.5602259635925293,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: not to mention the meals they serve - this is quality in itself",
+                        "similarity_score": 0.518487811088562,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "the quality of food is impressive, both in the room and at the breakfast buffet",
+                        "similarity_score": 0.48291051387786865,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: Amazing food",
+                        "similarity_score": 0.47336021065711975,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: Everything was superb and perfect example of hospitality",
+                        "similarity_score": 0.4648682177066803,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "food is just next level",
+                        "similarity_score": 0.4555298686027527,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Positive: delicious and varied breakfast, with excellent service staff.",
+                        "similarity_score": 0.4218929409980774,
+                        "stance": "contradicts",
+                        "confidence": 1.0,
+                        "polarity": "positive"
+                    },
+                    {
+                        "text": "Negative: Bad food",
+                        "similarity_score": 0.585105299949646,
+                        "stance": "supports",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: We had dinner at the Al Mahara restaurant and didn't like the tasting dinner dishes;",
+                        "similarity_score": 0.4658040404319763,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: We liked everything, we would have appreciated that the complementary services of food and drinks supplemented by the butler were not so limited.",
+                        "similarity_score": 0.45877805352211,
+                        "stance": "contradicts",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Your restaurants are great except the prices are little higher . | Negative",
+                        "similarity_score": 0.42399662733078003,
+                        "stance": "neutral",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: there was too much lemon on everything.",
+                        "similarity_score": 0.40851306915283203,
+                        "stance": "supports",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: Amenities are a bit underwhelming when compared to various previous visits",
+                        "similarity_score": 0.3631627559661865,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: the room service was not fast",
+                        "similarity_score": 0.35623276233673096,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Negative: Toast was cold every morning at breakfast",
+                        "similarity_score": 0.34412121772766113,
+                        "stance": "supports",
+                        "confidence": 0.9,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "The service and attention of the staff at Burj Al Arab was the worst of all experiences. Positive:",
+                        "similarity_score": 0.33692312240600586,
+                        "stance": "neutral",
+                        "confidence": 1.0,
+                        "polarity": "negative"
+                    },
+                    {
+                        "text": "Hotel Burj Al Arab has exceptionally high prices for food and drink",
+                        "similarity_score": 0.3112574815750122,
+                        "stance": "neutral",
+                        "confidence": 0.8,
+                        "polarity": "negative"
+                    }
+                ],
+                "api_error_count": 0
+            },
+            "additional_data": {}
+        }
+    ],
+    "summary": {
+        "total_claims": 6,
+        "true_claims": 1,
+        "false_claims": 4,
+        "unable_to_verify_claims": 1,
+        "accuracy_rate": 20.0
+    }
+}
