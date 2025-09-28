@@ -2,7 +2,7 @@
 
 This project implements a sophisticated pipeline designed to analyze and fact-check hotel reviews. By breaking down reviews into individual factual and opinion-based claims, it leverages multiple specialized agents, powered by Large Language Models (LLMs) and external data sources, to assess the validity of each claim. The goal is to determine the overall authenticity and reliability of a given hotel review.
 
-## How It Works
+## How It Works 
 
 The pipeline operates in a series of coordinated steps, utilizing distinct modules (agents) for specific tasks:
 
