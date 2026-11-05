@@ -1,18 +1,14 @@
 # agents/claim_extractor.py
 
-import os
 import json
-import re
-from typing import Dict, List, Any
+import logging
+from typing import Any, Dict, List, Literal, TypedDict
 
+import config
+import llm
+from run_log import note_failure
 
-from groq import Groq
-
-# Initialize Groq client using the environment variable
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY environment variable not set. Please check your .env file.")
-client = Groq(api_key=GROQ_API_KEY)
+logger = logging.getLogger(__name__)
 
 # Predefined claim types with brief definitions (can be expanded)
 CLAIM_TYPES = [
@@ -52,42 +48,25 @@ CLAIM_TYPES = [
     "food_drinks_miscellaneous"
 ]
 
-# ---------- Robust JSON extraction (handles minor formatting) ----------
-def extract_json_array(text: str) -> Any:
-    """
-    Try to parse a JSON array from the model output. Falls back to regex to
-    grab the outermost [...] block if the model wrapped it with extra text.
-    """
-    text = text.strip()
-    # Fast path
-    try:
-        parsed = json.loads(text)
-        return parsed
-    except Exception:
-        pass
-    # Fallback: find the first bracketed JSON array
-    match = re.search(r"\[\s*{.*}\s*\]", text, re.DOTALL)
-    if match:
-        candidate = match.group(0)
-        try:
-            return json.loads(candidate)
-        except Exception:
-            return []
-    return []
+
+# ---------- Answer formats (Ollama constrains the output to these) ----------
+class ExtractedClaim(TypedDict):
+    claim_text: str
+    claim_type: Literal[tuple(CLAIM_TYPES)]
+
+
+class ClassifiedClaim(ExtractedClaim):
+    claim_nature: Literal["factual", "opinion"]
+    claim_polarity: Literal["positive", "negative", "neutral"]
+
 
 # ---------- Low-level LLM call ----------
-def call_llm(prompt: str, model: str, temperature: float) -> Any:
-    """Calls the Groq LLM with the given prompt and parameters."""
+def call_llm(prompt: str, schema: Any) -> Any:
+    """Calls the local LLM with the given prompt; the answer follows `schema`."""
     try:
-        resp = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-            temperature=temperature,
-        )
-        content = resp.choices[0].message.content
-        return extract_json_array(content)
+        return llm.ask_json(prompt, schema)
     except Exception as e:
-        print(f"Error calling LLM: {e}")
+        note_failure(f"Error calling LLM: {e}")
         return []
 
 # ---------- STEP 1: Extract claims + claim_type (preserve phrasing) ----------
@@ -114,13 +93,10 @@ Review:
 \"\"\"{review_text}\"\"\"
 """.strip()
 
-def extract_claims_and_types(review_text: str, model_extract: str) -> List[Dict[str, Any]]:
+def extract_claims_and_types(review_text: str) -> List[Dict[str, Any]]:
     """Extracts claims and their types from the review text."""
     prompt = build_prompt_extract(review_text)
-    # Default model if not specified, matching the original code
-    model = model_extract if model_extract else "llama-3.3-70b-versatile"
-    out = call_llm(prompt, model=model, temperature=0.1)
-    return out if isinstance(out, list) else []
+    return call_llm(prompt, List[ExtractedClaim])
 
 # ---------- STEP 2: Add claim_nature + claim_polarity (keep text unchanged) ----------
 def build_prompt_classify(claims: List[Dict[str, Any]]) -> str:
@@ -153,58 +129,33 @@ Expected output:
 ]
 """.strip()
 
-def classify_nature_and_polarity(
-    claims: List[Dict[str, Any]],
-    model_classify: str
-) -> List[Dict[str, Any]]:
+def classify_nature_and_polarity(claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Classifies the nature and polarity of the provided claims."""
     if not claims:
         return []
     prompt = build_prompt_classify(claims)
-    # Default model if not specified, matching the original code
-    model = model_classify if model_classify else "llama-3.1-8b-instant"
-    out = call_llm(prompt, model=model, temperature=0.1)
-    # Ensure output length matches input length
-    if not isinstance(out, list) or len(out) != len(claims):
-         print("⚠️ Step 2 returned an unexpected result (empty or length mismatch).")
-         # Return input claims with empty nature/polarity if mismatch
-         # Or return the output if it's a list (even if wrong length)
-         # Original code returned `out or []`. Let's be slightly more robust.
-         if isinstance(out, list):
-             # Pad or truncate if necessary, or just return as is.
-             # For now, let's return the classified list, even if length mismatch,
-             # as the pipeline might handle it. Log the issue.
-             return out
-         else:
-             return [] # If output is not a list, return empty list
+    out = call_llm(prompt, List[ClassifiedClaim])
+    # Ensure output length matches input length; a mismatched list is still returned, as before
+    if len(out) != len(claims):
+        logger.warning("⚠️ Step 2 returned an unexpected result (empty or length mismatch).")
     return out
 
 # ---------- Convenience: Full two-stage pipeline ----------
-def process_review_two_stage(
-    review_text: str,
-    model_extract: str = "llama-3.3-70b-versatile",
-    model_classify: str = "llama-3.1-8b-instant"
-) -> List[Dict[str, Any]]:
+def process_review_two_stage(review_text: str) -> List[Dict[str, Any]]:
     """
     Processes the review text through the two-stage claim extraction and classification pipeline.
     """
-    print(f"\n--- Processing Review (extract model = {model_extract}) (classify model = {model_classify}) ---\n{review_text}\n")
+    logger.info(f"\n--- Processing Review (model = {config.OLLAMA_MODEL}) ---\n{review_text}\n")
     # Step 1: Extract claims
-    step1 = extract_claims_and_types(review_text, model_extract=model_extract)
+    step1 = extract_claims_and_types(review_text)
     if not step1:
-        print("❌ No claims extracted or parsing failed in Step 1.")
+        logger.info("❌ No claims extracted or parsing failed in Step 1.")
         return []
-    # print("Step 1 - Extracted claims with claim_type:")
-    # for c in step1:
-    #     print(json.dumps(c, ensure_ascii=False, indent=2))
 
     # Step 2: Classify claims
-    step2 = classify_nature_and_polarity(step1, model_classify=model_classify)
-    # The original code checked for length mismatch and warned.
-    # We've handled that in classify_nature_and_polarity.
-    # If step2 is empty after classification, return it.
+    step2 = classify_nature_and_polarity(step1)
     if not step2:
-         print("⚠️ No claims classified or parsing failed in Step 2.")
+        logger.info("⚠️ No claims classified or parsing failed in Step 2.")
     return step2
 
 # Modification For pipeline
@@ -224,13 +175,3 @@ def extract_claims_pipeline(hotel_name: str, hotel_review: str) -> Dict[str, Any
     return {
         "claims": extracted_claims
     }
-
-# Example usage (if run directly for testing):
-# if __name__ == "__main__":
-#     # Ensure .env is loaded if running this script directly
-#     from dotenv import load_dotenv # pip install python-dotenv
-#     load_dotenv()
-#
-#     test_review = "The hotel was dirty, but the location was great near the Eiffel Tower."
-#     result = extract_claims_pipeline("Test Hotel", test_review)
-#     print(json.dumps(result, indent=2))

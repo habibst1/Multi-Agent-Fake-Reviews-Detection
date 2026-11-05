@@ -1,48 +1,50 @@
 # agents/web_search_checker.py
 
-import os
-import json
-import requests
+import logging
 import re
-import time
 from io import BytesIO
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union
 
-from groq import Groq
-from sentence_transformers import SentenceTransformer, util
-import torch
-from PIL import Image
 import clip
+import torch
+from langgraph.graph import END, START, StateGraph
+from PIL import Image
+from pydantic import ValidationError
+from sentence_transformers import util
 
-# --- Configuration and Client Initialization ---
+import config
+import http_client
+import llm
+import models
+from run_log import note_failure, with_reasons
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
-if not all([GOOGLE_API_KEY, SEARCH_ENGINE_ID]):
-    raise ValueError("Web search checker requires GOOGLE_API_KEY and SEARCH_ENGINE_ID. Please check your .env file.")
+logger = logging.getLogger(__name__)
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY environment variable not set. Please check your .env file.")
-client = Groq(api_key=GROQ_API_KEY)
 
-# --- Model Initialization ---
-device = "cuda" if torch.cuda.is_available() else "cpu"
-try:
-    print("🔧 Loading SentenceTransformer model for web search checker...")
-    sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
-    print("✅ SentenceTransformer model loaded.")
-except Exception as e:
-    print(f"❌ Failed to load SentenceTransformer model: {e}")
-    sbert_model = None
+# --- Answer formats (Ollama constrains the output to these) ---
+class RankedEvidence(TypedDict):
+    index: int
+    score: Union[int, float]
+    reasoning: str
 
-try:
-    print("🔧 Loading CLIP model for web search checker...")
-    clip_model, clip_preprocess = clip.load("ViT-L/14@336px", device=device)
-    print("✅ CLIP model loaded.")
-except Exception as e:
-    print(f"❌ Failed to load CLIP model: {e}")
-    clip_model, clip_preprocess = None, None
+
+class SufficiencyCheck(TypedDict):
+    is_sufficient: bool
+    reasoning: str
+    additional_info_needed: str
+
+
+class ClaimVerification(TypedDict):
+    verdict: Literal["SUPPORTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE"]
+    confidence_score: float
+    reasoning: str
+    supporting_text_evidence: List[str]
+    supporting_visual_evidence: List[str]
+    contradicting_text_evidence: List[str]
+    contradicting_visual_evidence: List[str]
+    red_flags: List[str]
+    recommendation: str
+
 
 # --- Core Web Search Checking Functions ---
 
@@ -67,13 +69,13 @@ def google_search(query: str, num_results: int = 10) -> List[Dict[str, str]]:
     """Search Google and return results with metadata"""
     search_url = "https://www.googleapis.com/customsearch/v1"
     params = {
-        "key": GOOGLE_API_KEY,
-        "cx": SEARCH_ENGINE_ID,
+        "key": config.GOOGLE_API_KEY,
+        "cx": config.SEARCH_ENGINE_ID,
         "q": query,
         "num": num_results
     }
     try:
-        response = requests.get(search_url, params=params, timeout=10) # Added timeout
+        response = http_client.get(search_url, params=params, timeout=10)
         response.raise_for_status()
         results = response.json()
         search_results = []
@@ -90,7 +92,7 @@ def google_search(query: str, num_results: int = 10) -> List[Dict[str, str]]:
                     })
         return search_results
     except Exception as e:
-        print(f"Error in Google Search: {e}")
+        note_failure(f"Error in Google Search: {e}")
         return []
 
 
@@ -98,14 +100,14 @@ def google_image_search(query: str, num_results: int = 10) -> List[Dict[str, str
     """Search Google Images and return results with metadata"""
     search_url = "https://www.googleapis.com/customsearch/v1"
     params = {
-        "key": GOOGLE_API_KEY,
-        "cx": SEARCH_ENGINE_ID,
+        "key": config.GOOGLE_API_KEY,
+        "cx": config.SEARCH_ENGINE_ID,
         "q": query,
         "num": num_results,
         "searchType": "image"
     }
     try:
-        response = requests.get(search_url, params=params, timeout=10) # Added timeout
+        response = http_client.get(search_url, params=params, timeout=10)
         response.raise_for_status()
         results = response.json()
         image_results = []
@@ -124,46 +126,48 @@ def google_image_search(query: str, num_results: int = 10) -> List[Dict[str, str
                     })
         return image_results
     except Exception as e:
-        print(f"Error in Google Image Search: {e}")
+        note_failure(f"Error in Google Image Search: {e}")
         return []
 
 
 def download_and_process_image(image_url: str, timeout: int = 10) -> Tuple[Optional[torch.Tensor], Optional[Image.Image]]:
     """Download image and preprocess it for CLIP"""
+    _, clip_preprocess = models.get_clip()
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        response = requests.get(image_url, headers=headers, timeout=timeout)
+        response = http_client.get(image_url, headers=headers, timeout=timeout)
         response.raise_for_status()
         # Open image and convert to RGB
         image = Image.open(BytesIO(response.content)).convert('RGB')
         # Preprocess for CLIP
-        image_tensor = clip_preprocess(image).unsqueeze(0).to(device)
+        image_tensor = clip_preprocess(image).unsqueeze(0).to(models.device)
         return image_tensor, image
     except Exception as e:
-        print(f"Error processing image {image_url}: {e}")
+        logger.warning(f"Error processing image {image_url}: {e}")
         return None, None
 
 
 def find_most_similar_images(claim_text: str, image_results: List[Dict], top_k: int = 3) -> List[Dict]:
     """Find most semantically similar images using CLIP"""
+    clip_model, _ = models.get_clip()
     if not image_results or not clip_model:
         return []
     try:
         # Encode the claim text with CLIP
-        text_tokens = clip.tokenize([claim_text]).to(device)
+        text_tokens = clip.tokenize([claim_text]).to(models.device)
         with torch.no_grad():
             text_features = clip_model.encode_text(text_tokens)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
     except Exception as e:
-        print(f"Error encoding text with CLIP: {e}")
+        note_failure(f"Error encoding text with CLIP: {e}")
         return []
 
     similar_images = []
-    print(f"🖼️  Processing {len(image_results)} images...")
+    logger.info(f"🖼️  Processing {len(image_results)} images...")
     for i, img_result in enumerate(image_results):
-        print(f"  Processing image {i+1}/{len(image_results)}: {img_result['title'][:50]}...")
+        logger.info(f"  Processing image {i+1}/{len(image_results)}: {img_result['title'][:50]}...")
         image_tensor, pil_image = download_and_process_image(img_result['image_url'])
         if image_tensor is not None:
             try:
@@ -182,7 +186,7 @@ def find_most_similar_images(claim_text: str, image_results: List[Dict], top_k: 
                         'pil_image': pil_image  # Store for potential further processing
                     })
             except Exception as e:
-                print(f"    Error encoding image: {e}")
+                logger.warning(f"    Error encoding image: {e}")
                 continue
     # Sort by similarity and return top-k
     similar_images.sort(key=lambda x: x['similarity_score'], reverse=True)
@@ -195,12 +199,13 @@ def find_most_similar_images(claim_text: str, image_results: List[Dict], top_k: 
 
 def find_most_similar_evidence(claim_text: str, search_results: List[Dict], top_k: int = 3) -> List[Dict]:
     """Find most semantically similar evidence using SBERT"""
+    sbert_model = models.get_sbert()
     if not search_results or not sbert_model:
         return []
     try:
         claim_embedding = sbert_model.encode(claim_text, convert_to_tensor=True)
     except Exception as e:
-        print(f"Error encoding claim with SBERT: {e}")
+        note_failure(f"Error encoding claim with SBERT: {e}")
         return []
 
     # Process all chunks with source tracking
@@ -233,31 +238,17 @@ def find_most_similar_evidence(claim_text: str, search_results: List[Dict], top_
             })
         return top_evidence
     except Exception as e:
-        print(f"Error finding similar evidence with SBERT: {e}")
+        note_failure(f"Error finding similar evidence with SBERT: {e}")
         return []
 
 
-def generate_with_groq(prompt: str, model: str) -> Optional[str]:
-    """Generate text using Groq API"""
-    try:
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-            temperature=0.1,
-        )
-        return chat_completion.choices[0].message.content
-    except Exception as e:
-        print(f"Error in Groq API (generate_with_groq): {e}")
-        return None
-
-
-def verify_claim_with_groq(
+def verify_claim_with_llm(
     claim_text: str,
     text_evidence_list: List[Dict],
     visual_evidence_list: List[Dict],
     hotel_name: str
 ) -> Dict[str, Any]:
-    """Use Groq API to verify claim against both text and visual evidence"""
+    """Use the local LLM to verify claim against both text and visual evidence"""
     text_evidence_section = ""
     for i, evidence in enumerate(text_evidence_list, 1):
         text_evidence_section += f"""
@@ -307,22 +298,12 @@ Return ONLY a valid JSON (no extra text):
 }}
 """
     try:
-        response_text = generate_with_groq(prompt , "llama-3.3-70b-versatile")
-        if not response_text:
-            raise ValueError("Empty response from Groq API")
-        # Extract JSON from response
-        if "```json" in response_text:
-            json_start = response_text.find("```json") + 7
-            json_end = response_text.find("```", json_start)
-            json_text = response_text[json_start:json_end].strip()
-        else:
-            json_text = response_text.strip()
-        return json.loads(json_text)
-    except json.JSONDecodeError as e:
+        return llm.ask_json(prompt, ClaimVerification)
+    except ValidationError as e:
         return {
             "verdict": "ERROR",
             "confidence_score": 0.0,
-            "reasoning": f"Failed to parse Groq response: {str(e)}",
+            "reasoning": f"Failed to parse LLM response: {str(e)}",
             "supporting_text_evidence": [],
             "supporting_visual_evidence": [],
             "contradicting_text_evidence": [],
@@ -334,7 +315,7 @@ Return ONLY a valid JSON (no extra text):
         return {
             "verdict": "ERROR",
             "confidence_score": 0.0,
-            "reasoning": f"Groq API error: {str(e)}",
+            "reasoning": f"LLM error: {str(e)}",
             "supporting_text_evidence": [],
             "supporting_visual_evidence": [],
             "contradicting_text_evidence": [],
@@ -344,13 +325,13 @@ Return ONLY a valid JSON (no extra text):
         }
 
 
-def rank_evidence_with_groq(
+def rank_evidence_with_llm(
     claim_text: str,
     evidence_list: List[Dict],
     hotel_name: str,
     evidence_type: str = "text"
 ) -> List[Dict]:
-    """Rank textual or visual evidence using Groq based on usefulness, credibility, and relevance"""
+    """Rank textual or visual evidence with the local LLM based on usefulness, credibility, and relevance"""
     if not evidence_list:
         return []
     # Prepare evidence for ranking
@@ -400,18 +381,8 @@ Provide the output in this JSON format (no extra text):
 ]
 """
     try:
-        response_text = generate_with_groq(prompt, "llama-3.3-70b-versatile")
-        if not response_text:
-            raise ValueError("Empty response from Groq API")
-        # Extract JSON from response
-        if "```json" in response_text:
-            json_start = response_text.find("```json") + 7
-            json_end = response_text.find("```", json_start)
-            json_text = response_text[json_start:json_end].strip()
-        else:
-            json_text = response_text.strip()
-        ranked_results = json.loads(json_text)
-        # Sort evidence based on Groq's ranking
+        ranked_results = llm.ask_json(prompt, List[RankedEvidence])
+        # Sort evidence based on the LLM's ranking
         ranked_evidence = []
         for rank in sorted(ranked_results, key=lambda x: x['score'], reverse=True):
             idx = rank['index'] - 1  # Convert to 0-based index
@@ -422,7 +393,7 @@ Provide the output in this JSON format (no extra text):
                 ranked_evidence.append(evidence)
         return ranked_evidence
     except Exception as e:
-        print(f"Error ranking {evidence_type} evidence: {e}")
+        note_failure(f"Error ranking {evidence_type} evidence: {e}")
         # Fallback: return original evidence with default ranking values
         fallback_evidence = []
         for evidence in evidence_list:
@@ -480,24 +451,285 @@ Provide the output in this JSON format (no extra text):
 }}
 """
     try:
-        response_text = generate_with_groq(prompt , "llama-3.3-70b-versatile")
-        if not response_text:
-            raise ValueError("Empty response from Groq API")
-        # Extract JSON from response
-        if "```json" in response_text:
-            json_start = response_text.find("```json") + 7
-            json_end = response_text.find("```", json_start)
-            json_text = response_text[json_start:json_end].strip()
-        else:
-            json_text = response_text.strip()
-        return json.loads(json_text)
+        return llm.ask_json(prompt, SufficiencyCheck)
     except Exception as e:
-        print(f"Error checking evidence sufficiency: {e}")
+        note_failure(f"Error checking evidence sufficiency: {e}")
         return {
             "is_sufficient": False,
-            "reasoning": f"Error in Groq API: {str(e)}",
+            "reasoning": f"Error in LLM call: {str(e)}",
             "additional_info_needed": "Unable to assess due to API error"
         }
+
+
+# --- Web search checker graph: search, select, rank, check sufficiency (loop), verify ---
+
+MAX_EVIDENCE_PER_KIND = 3  # the sufficiency check escalates from top 1 to top 3
+
+
+class WebState(TypedDict, total=False):
+    claim_id: str
+    claim_text: str
+    hotel_name: str
+    claim_type: str
+    search_query: str
+    search_results: List[Dict[str, Any]]
+    image_results: List[Dict[str, Any]]
+    text_evidence: List[Dict[str, Any]]
+    visual_evidence: List[Dict[str, Any]]
+    ranked_text: List[Dict[str, Any]]
+    ranked_visual: List[Dict[str, Any]]
+    top_k: int
+    selected_text: List[Dict[str, Any]]
+    selected_visual: List[Dict[str, Any]]
+    sufficiency: Dict[str, Any]
+    result: Dict[str, Any]
+
+
+def _no_evidence_result(claim_id, error, search_query, sources_found):
+    return {
+        "claim_id": claim_id,
+        "verdict": "unable_to_verify",
+        "confidence_score": 0.0,
+        "evidence": {
+            "error": error,
+            "search_queries": [search_query],
+            "sources_found": sources_found,
+            "supporting_sources": 0,
+            "contradicting_sources": 0,
+            "neutral_sources": sources_found,
+            "key_evidence": []
+        }
+    }
+
+
+def search(state: WebState) -> Dict[str, Any]:
+    """Search Google for text and images about the claim."""
+    hotel_name = state.get("hotel_name")
+    claim_text = state.get("claim_text")
+    claim_id = state.get("claim_id")
+
+    if not all([hotel_name, claim_text, claim_id]):
+        return {"result": {
+            "claim_id": claim_id,
+            "verdict": "unable_to_verify",
+            "confidence_score": 0.0,
+            "evidence": {
+                "error": "Missing required input parameters"
+            }
+        }}
+
+    search_query = f'"{hotel_name}" {claim_text}'
+    logger.info(f"🔍 Verifying: {claim_text}")
+    logger.info(f"🔎 Search Query: {search_query}")
+    logger.info("-" * 80)
+    logger.info("📚 Searching for text evidence...")
+    search_results = google_search(search_query, num_results=10)
+    logger.info("🖼️  Searching for visual evidence...")
+    image_results = google_image_search(search_query, num_results=10)
+
+    if not search_results and not image_results:
+        logger.info("❌ No search results found")
+        return {"result": _no_evidence_result(claim_id, with_reasons("No search results found"), search_query, 0)}
+
+    logger.info(f"📚 Found {len(search_results)} text results")
+    logger.info(f"🖼️  Found {len(image_results)} image results")
+    return {"search_query": search_query, "search_results": search_results, "image_results": image_results}
+
+
+def select_evidence(state: WebState) -> Dict[str, Any]:
+    """Keep the 3 most similar text snippets (SBERT) and the 3 most similar images (CLIP)."""
+    claim_text = state["claim_text"]
+    search_results = state["search_results"]
+    image_results = state["image_results"]
+
+    text_evidence_list = find_most_similar_evidence(claim_text, search_results, top_k=3)
+    visual_evidence_list = find_most_similar_images(claim_text, image_results, top_k=3)
+
+    if not text_evidence_list and not visual_evidence_list:
+        logger.info("❌ No relevant evidence found")
+        sources_found = len(search_results) + len(image_results)
+        return {"result": _no_evidence_result(state["claim_id"], with_reasons("No relevant evidence found"), state["search_query"], sources_found)}
+
+    logger.info(f"🎯 Found {len(text_evidence_list)} relevant text evidence pieces")
+    # Print textual evidence details
+    if text_evidence_list:
+        logger.info("\n📝 Textual Evidence Details:")
+        for i, evidence in enumerate(text_evidence_list, 1):
+            logger.info(f"Text Evidence {i}:")
+            logger.info(f"  Title: {evidence['title']}")
+            logger.info(f"  URL: {evidence['url']}")
+            logger.info(f"  Content: {evidence['text']}")
+            logger.info(f"  Similarity Score: {evidence['similarity_score']:.3f}")
+            logger.info("-" * 40)
+
+    logger.info(f"🎯 Found {len(visual_evidence_list)} relevant visual evidence pieces")
+    # Print visual evidence details
+    if visual_evidence_list:
+        logger.info("\n🖼️ Visual Evidence Details:")
+        for i, evidence in enumerate(visual_evidence_list, 1):
+            logger.info(f"Visual Evidence {i}:")
+            logger.info(f"  Image Title: {evidence['title']}")
+            logger.info(f"  Image URL: {evidence['image_url']}")
+            logger.info(f"  Context URL: {evidence['context_url']}")
+            logger.info(f"  Description: {evidence['snippet']}")
+            logger.info(f"  Similarity Score: {evidence['similarity_score']:.3f}")
+            logger.info("-" * 40)
+
+    return {"text_evidence": text_evidence_list, "visual_evidence": visual_evidence_list}
+
+
+def rank_evidence(state: WebState) -> Dict[str, Any]:
+    """Let the LLM rank the selected text and visual evidence."""
+    claim_text = state["claim_text"]
+    hotel_name = state["hotel_name"]
+
+    logger.info("\n🤖 Ranking text evidence...")
+    ranked_text_evidence = rank_evidence_with_llm(claim_text, state["text_evidence"], hotel_name, evidence_type="text")
+    # Print ranked textual evidence details
+    if ranked_text_evidence:
+        logger.info("\n📝 Ranked Textual Evidence Details:")
+        for i, evidence in enumerate(ranked_text_evidence, 1):
+            logger.info(f"Ranked Text Evidence {i}:")
+            logger.info(f"  Title: {evidence['title']}")
+            logger.info(f"  URL: {evidence['url']}")
+            logger.info(f"  Content: {evidence['text']}")
+            logger.info(f"  Similarity Score: {evidence['similarity_score']:.3f}")
+            logger.info(f"  Ranking Score: {evidence['ranking_score']:.1f}")
+            logger.info(f"  Ranking Reasoning: {evidence['ranking_reasoning']}")
+            logger.info("-" * 40)
+
+    logger.info("\n🤖 Ranking visual evidence...")
+    ranked_visual_evidence = rank_evidence_with_llm(claim_text, state["visual_evidence"], hotel_name, evidence_type="visual")
+    # Print ranked visual evidence details
+    if ranked_visual_evidence:
+        logger.info("\n🖼️ Ranked Visual Evidence Details:")
+        for i, evidence in enumerate(ranked_visual_evidence, 1):
+            logger.info(f"Ranked Visual Evidence {i}:")
+            logger.info(f"  Image Title: {evidence['title']}")
+            logger.info(f"  Image URL: {evidence['image_url']}")
+            logger.info(f"  Context URL: {evidence['context_url']}")
+            logger.info(f"  Description: {evidence['snippet']}")
+            logger.info(f"  Similarity Score: {evidence['similarity_score']:.3f}")
+            logger.info(f"  Ranking Score: {evidence['ranking_score']:.1f}")
+            logger.info(f"  Ranking Reasoning: {evidence['ranking_reasoning']}")
+            logger.info("-" * 40)
+
+    return {"ranked_text": ranked_text_evidence, "ranked_visual": ranked_visual_evidence}
+
+
+def check_sufficiency(state: WebState) -> Dict[str, Any]:
+    """Ask the LLM whether the top-k evidence is enough; each pass adds one more piece of each kind."""
+    top_k = state.get("top_k", 0) + 1
+    if top_k == 1:
+        logger.info("\n🤖 Checking evidence sufficiency with top 1 text and visual evidence...")
+    else:
+        still = "still " if top_k > 2 else ""
+        logger.info(f"\n⚠️  Evidence {still}insufficient: {state['sufficiency']['reasoning']}")
+        logger.info(f"\n🤖 Escalating to top {top_k} text and visual evidence...")
+    selected_text = state["ranked_text"][:top_k]
+    selected_visual = state["ranked_visual"][:top_k]
+    sufficiency_result = check_evidence_sufficiency(state["claim_text"], selected_text, selected_visual, state["hotel_name"])
+    return {
+        "top_k": top_k,
+        "selected_text": selected_text,
+        "selected_visual": selected_visual,
+        "sufficiency": sufficiency_result
+    }
+
+
+def _after_sufficiency(state: WebState):
+    if not state["sufficiency"]["is_sufficient"] and state["top_k"] < MAX_EVIDENCE_PER_KIND:
+        return "check_sufficiency"
+    return "verify"
+
+
+def verify(state: WebState) -> Dict[str, Any]:
+    """Let the LLM give the verdict on the selected evidence."""
+    claim_text = state["claim_text"]
+    selected_text = state["selected_text"]
+    selected_visual = state["selected_visual"]
+    sufficiency_result = state["sufficiency"]
+
+    logger.info(f"\n🎯 Sufficiency Result: {'Sufficient' if sufficiency_result['is_sufficient'] else 'Insufficient'}")
+    logger.info(f"💭 Reasoning: {sufficiency_result['reasoning']}")
+
+    logger.info("\n🤖 Analyzing with the LLM (selected evidence)...")
+    llm_analysis = verify_claim_with_llm(claim_text, selected_text, selected_visual, state["hotel_name"])
+
+    evidence = {
+        "search_queries": [state["search_query"]],
+        "supporting_text_evidence": llm_analysis["supporting_text_evidence"],
+        "supporting_visual_evidence": llm_analysis["supporting_visual_evidence"],
+        "contradicting_text_evidence": llm_analysis["contradicting_text_evidence"],
+        "contradicting_visual_evidence": llm_analysis["contradicting_visual_evidence"],
+        "red_flags": llm_analysis["red_flags"],
+        "recommendation": llm_analysis["recommendation"],
+        "reasoning": llm_analysis["reasoning"],
+        "text_evidence_count": len(selected_text),
+        "visual_evidence_count": len(selected_visual),
+        "sufficiency_check": sufficiency_result
+    }
+
+    if selected_text:
+        evidence["text_sources"] = [e['url'] for e in selected_text]
+    if selected_visual:
+        evidence["visual_sources"] = [e['image_url'] for e in selected_visual]
+
+    # Map the LLM verdict to standardized format
+    verdict_mapping = {
+        "SUPPORTED": "true",
+        "CONTRADICTED": "false",
+        "INSUFFICIENT_EVIDENCE": "unable_to_verify",
+        "ERROR": "unable_to_verify"
+    }
+    standardized_verdict = verdict_mapping.get(llm_analysis["verdict"], "unable_to_verify")
+
+    result = {
+        "claim_id": state["claim_id"],
+        "verdict": standardized_verdict,  # Use standardized verdict
+        "confidence_score": llm_analysis["confidence_score"],
+        "evidence": evidence
+    }
+
+    # Update emoji display to use standardized verdict
+    if standardized_verdict == "true":
+        verdict_emoji = "✅"
+    elif standardized_verdict == "false":
+        verdict_emoji = "❌"
+    else:  # "unable_to_verify"
+        verdict_emoji = "❓"
+
+    logger.info(f"\n{verdict_emoji} VERDICT: {standardized_verdict.upper()}")
+    logger.info(f"🎯 Confidence: {llm_analysis['confidence_score']:.2f}")
+    logger.info(f"💭 Reasoning: {llm_analysis['reasoning']}")
+    logger.info("=" * 80)
+
+    return {"result": result}
+
+
+def _stop_when_decided(next_node):
+    def route(state: WebState):
+        return END if state.get("result") is not None else next_node
+    return route
+
+
+def build_web_search_graph():
+    builder = StateGraph(WebState)
+    builder.add_node("search", search)
+    builder.add_node("select_evidence", select_evidence)
+    builder.add_node("rank_evidence", rank_evidence)
+    builder.add_node("check_sufficiency", check_sufficiency)
+    builder.add_node("verify", verify)
+    builder.add_edge(START, "search")
+    builder.add_conditional_edges("search", _stop_when_decided("select_evidence"), ["select_evidence", END])
+    builder.add_conditional_edges("select_evidence", _stop_when_decided("rank_evidence"), ["rank_evidence", END])
+    builder.add_edge("rank_evidence", "check_sufficiency")
+    builder.add_conditional_edges("check_sufficiency", _after_sufficiency, ["check_sufficiency", "verify"])
+    builder.add_edge("verify", END)
+    return builder.compile()
+
+
+web_search_graph = build_web_search_graph()
 
 
 def check_web_search_claim(input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -520,205 +752,9 @@ def check_web_search_claim(input_data: Dict[str, Any]) -> Dict[str, Any]:
     }
     """
     try:
-        hotel_name = input_data.get("hotel_name")
-        claim_text = input_data.get("claim_text")
-        claim_id = input_data.get("claim_id")
-        claim_type = input_data.get("claim_type", "factual_claim")
-
-        if not all([hotel_name, claim_text, claim_id]):
-            return {
-                "claim_id": claim_id,
-                "verdict": "unable_to_verify",
-                "confidence_score": 0.0,
-                "evidence": {
-                    "error": "Missing required input parameters"
-                }
-            }
-
-        search_query = f'"{hotel_name}" {claim_text}'
-        print(f"🔍 Verifying: {claim_text}")
-        print(f"🔎 Search Query: {search_query}")
-        print("-" * 80)
-        print("📚 Searching for text evidence...")
-        search_results = google_search(search_query, num_results=10)
-        print("🖼️  Searching for visual evidence...")
-        image_results = google_image_search(search_query, num_results=10)
-
-        if not search_results and not image_results:
-            print("❌ No search results found")
-            return {
-                "claim_id": claim_id,
-                "verdict": "unable_to_verify",
-                "confidence_score": 0.0,
-                "evidence": {
-                    "error": "No search results found",
-                    "search_queries": [search_query],
-                    "sources_found": 0,
-                    "supporting_sources": 0,
-                    "contradicting_sources": 0,
-                    "neutral_sources": 0,
-                    "key_evidence": []
-                }
-            }
-
-        print(f"📚 Found {len(search_results)} text results")
-        print(f"🖼️  Found {len(image_results)} image results")
-
-        text_evidence_list = find_most_similar_evidence(claim_text, search_results, top_k=3)
-        visual_evidence_list = find_most_similar_images(claim_text, image_results, top_k=3)
-
-        if not text_evidence_list and not visual_evidence_list:
-            print("❌ No relevant evidence found")
-            return {
-                "claim_id": claim_id,
-                "verdict": "unable_to_verify",
-                "confidence_score": 0.0,
-                "evidence": {
-                    "error": "No relevant evidence found",
-                    "search_queries": [search_query],
-                    "sources_found": len(search_results) + len(image_results),
-                    "supporting_sources": 0,
-                    "contradicting_sources": 0,
-                    "neutral_sources": len(search_results) + len(image_results),
-                    "key_evidence": []
-                }
-            }
-
-        print(f"🎯 Found {len(text_evidence_list)} relevant text evidence pieces")
-        # Print textual evidence details
-        if text_evidence_list:
-            print("\n📝 Textual Evidence Details:")
-            for i, evidence in enumerate(text_evidence_list, 1):
-                print(f"Text Evidence {i}:")
-                print(f"  Title: {evidence['title']}")
-                print(f"  URL: {evidence['url']}")
-                print(f"  Content: {evidence['text']}")
-                print(f"  Similarity Score: {evidence['similarity_score']:.3f}")
-                print("-" * 40)
-
-        print(f"🎯 Found {len(visual_evidence_list)} relevant visual evidence pieces")
-        # Print visual evidence details
-        if visual_evidence_list:
-            print("\n🖼️ Visual Evidence Details:")
-            for i, evidence in enumerate(visual_evidence_list, 1):
-                print(f"Visual Evidence {i}:")
-                print(f"  Image Title: {evidence['title']}")
-                print(f"  Image URL: {evidence['image_url']}")
-                print(f"  Context URL: {evidence['context_url']}")
-                print(f"  Description: {evidence['snippet']}")
-                print(f"  Similarity Score: {evidence['similarity_score']:.3f}")
-                print("-" * 40)
-
-        print("\n🤖 Ranking text evidence...")
-        ranked_text_evidence = rank_evidence_with_groq(claim_text, text_evidence_list, hotel_name, evidence_type="text")
-        # Print ranked textual evidence details
-        if ranked_text_evidence:
-            print("\n📝 Ranked Textual Evidence Details:")
-            for i, evidence in enumerate(ranked_text_evidence, 1):
-                print(f"Ranked Text Evidence {i}:")
-                print(f"  Title: {evidence['title']}")
-                print(f"  URL: {evidence['url']}")
-                print(f"  Content: {evidence['text']}")
-                print(f"  Similarity Score: {evidence['similarity_score']:.3f}")
-                print(f"  Ranking Score: {evidence['ranking_score']:.1f}")
-                print(f"  Ranking Reasoning: {evidence['ranking_reasoning']}")
-                print("-" * 40)
-
-        print("\n🤖 Ranking visual evidence...")
-        ranked_visual_evidence = rank_evidence_with_groq(claim_text, visual_evidence_list, hotel_name, evidence_type="visual")
-        # Print ranked visual evidence details
-        if ranked_visual_evidence:
-            print("\n🖼️ Ranked Visual Evidence Details:")
-            for i, evidence in enumerate(ranked_visual_evidence, 1):
-                print(f"Ranked Visual Evidence {i}:")
-                print(f"  Image Title: {evidence['title']}")
-                print(f"  Image URL: {evidence['image_url']}")
-                print(f"  Context URL: {evidence['context_url']}")
-                print(f"  Description: {evidence['snippet']}")
-                print(f"  Similarity Score: {evidence['similarity_score']:.3f}")
-                print(f"  Ranking Score: {evidence['ranking_score']:.1f}")
-                print(f"  Ranking Reasoning: {evidence['ranking_reasoning']}")
-                print("-" * 40)
-
-        selected_text = ranked_text_evidence[:1] if ranked_text_evidence else []
-        selected_visual = ranked_visual_evidence[:1] if ranked_visual_evidence else []
-
-        print("\n🤖 Checking evidence sufficiency with top 1 text and visual evidence...")
-        sufficiency_result = check_evidence_sufficiency(claim_text, selected_text, selected_visual, hotel_name)
-
-        if not sufficiency_result['is_sufficient']:
-            print(f"\n⚠️  Evidence insufficient: {sufficiency_result['reasoning']}")
-            print("\n🤖 Escalating to top 2 text and visual evidence...")
-            selected_text = ranked_text_evidence[:2] if len(ranked_text_evidence) >= 2 else ranked_text_evidence
-            selected_visual = ranked_visual_evidence[:2] if len(ranked_visual_evidence) >= 2 else ranked_visual_evidence
-            sufficiency_result = check_evidence_sufficiency(claim_text, selected_text, selected_visual, hotel_name)
-
-            if not sufficiency_result['is_sufficient']:
-                print(f"\n⚠️  Evidence still insufficient: {sufficiency_result['reasoning']}")
-                print("\n🤖 Escalating to top 3 text and visual evidence...")
-                selected_text = ranked_text_evidence[:3] if len(ranked_text_evidence) >= 3 else ranked_text_evidence
-                selected_visual = ranked_visual_evidence[:3] if len(ranked_visual_evidence) >= 3 else ranked_visual_evidence
-                sufficiency_result = check_evidence_sufficiency(claim_text, selected_text, selected_visual, hotel_name)
-
-        print(f"\n🎯 Sufficiency Result: {'Sufficient' if sufficiency_result['is_sufficient'] else 'Insufficient'}")
-        print(f"💭 Reasoning: {sufficiency_result['reasoning']}")
-
-        print("\n🤖 Analyzing with Groq LLM (selected evidence)...")
-        groq_analysis = verify_claim_with_groq(claim_text, selected_text, selected_visual, hotel_name)
-
-        evidence = {
-            "search_queries": [search_query],
-            "supporting_text_evidence": groq_analysis["supporting_text_evidence"],
-            "supporting_visual_evidence": groq_analysis["supporting_visual_evidence"],
-            "contradicting_text_evidence": groq_analysis["contradicting_text_evidence"],
-            "contradicting_visual_evidence": groq_analysis["contradicting_visual_evidence"],
-            "red_flags": groq_analysis["red_flags"],
-            "recommendation": groq_analysis["recommendation"],
-            "reasoning": groq_analysis["reasoning"],
-            "text_evidence_count": len(selected_text),
-            "visual_evidence_count": len(selected_visual),
-            "sufficiency_check": sufficiency_result
-        }
-
-        if selected_text:
-            evidence["text_sources"] = [e['url'] for e in selected_text]
-        if selected_visual:
-            evidence["visual_sources"] = [e['image_url'] for e in selected_visual]
-
-        # Map Groq analysis verdict to standardized format
-        verdict_mapping = {
-            "SUPPORTED": "true",
-            "CONTRADICTED": "false",
-            "INSUFFICIENT_EVIDENCE": "unable_to_verify",
-            "ERROR": "unable_to_verify"
-        }
-        groq_verdict = groq_analysis["verdict"]
-        standardized_verdict = verdict_mapping.get(groq_verdict, "unable_to_verify")
-
-        result = {
-            "claim_id": claim_id,
-            "verdict": standardized_verdict,  # Use standardized verdict
-            "confidence_score": groq_analysis["confidence_score"],
-            "evidence": evidence
-        }
-
-        # Update emoji display to use standardized verdict
-        if standardized_verdict == "true":
-            verdict_emoji = "✅"
-        elif standardized_verdict == "false":
-            verdict_emoji = "❌"
-        else:  # "unable_to_verify"
-            verdict_emoji = "❓"
-
-        print(f"\n{verdict_emoji} VERDICT: {standardized_verdict.upper()}")
-        print(f"🎯 Confidence: {groq_analysis['confidence_score']:.2f}")
-        print(f"💭 Reasoning: {groq_analysis['reasoning']}")
-        print("=" * 80)
-
-        return result
-
+        return web_search_graph.invoke(input_data)["result"]
     except Exception as e:
-        print(f"Error in check_web_search_claim: {e}")
+        note_failure(f"Error in check_web_search_claim: {e}")
         return {
             "claim_id": input_data.get("claim_id", "unknown"),
             "verdict": "unable_to_verify",
@@ -733,17 +769,3 @@ def check_web_search_claim(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 "key_evidence": []
             }
         }
-
-# Example usage (if run directly for testing):
-# if __name__ == "__main__":
-#     # Ensure .env is loaded if running this script directly
-#     # from dotenv import load_dotenv # pip install python-dotenv
-#     # load_dotenv()
-#     # test_data = {
-#     #     "claim_id": "test_claim_1",
-#     #     "claim_text": "The hotel has a rooftop infinity pool.",
-#     #     "hotel_name": "Grand Plaza Hotel"
-#     # }
-#     # result = check_web_search_claim(test_data)
-#     # print(json.dumps(result, indent=2))
-#     pass

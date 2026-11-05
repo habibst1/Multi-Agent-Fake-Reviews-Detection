@@ -1,51 +1,53 @@
 # agents/opinion_checker.py
 
-import os
 import json
+import logging
+import os
 import re
-from groq import Groq
-from sentence_transformers import SentenceTransformer, util
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict
+
 from fuzzywuzzy import process
-from typing import Dict, List, Any, Tuple, Optional
+from langgraph.graph import END, START, StateGraph
+from sentence_transformers import util
 
-# --- Configuration and Client Initialization ---
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY environment variable not set. Please check your .env file.")
-client = Groq(api_key=GROQ_API_KEY)
+import config
+import llm
+import models
+from run_log import note_failure, with_reasons
 
-# --- Model Initialization ---
-try:
-    print("🔧 Loading SentenceTransformer model for opinion checker...")
-    sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
-    print("✅ SentenceTransformer model loaded.")
-except Exception as e:
-    print(f"❌ Failed to load SentenceTransformer model: {e}")
-    sbert_model = None
+logger = logging.getLogger(__name__)
+
+
+# --- Answer format (Ollama constrains the output to this) ---
+class StanceAnswer(TypedDict):
+    classification: Literal["supports", "contradicts", "neutral"]
+    confidence_score: float
+
 
 # --- Core Opinion Checking Functions ---
 
-def find_closest_json_file(hotel_name: str, folder: str = "Hotel Reviews with claims") -> Tuple[str, str]:
+def find_closest_json_file(hotel_name: str, folder=None) -> Tuple[str, str]:
     """
     Finds the JSON file in the folder that best matches the hotel name.
     Returns a tuple of (full_file_path, matched_hotel_name_for_display).
     """
+    folder = folder or config.REVIEWS_DIR
     # Normalize hotel name for matching
     normalized_hotel_name = hotel_name.lower().replace(" ", "_")
-    
+
     # Check if folder exists
     if not os.path.exists(folder):
-        print(f"⚠️ Review data folder '{folder}' not found.")
+        note_failure(f"⚠️ Review data folder '{folder}' not found.")
         return "", hotel_name # Return original name if folder missing
 
     try:
         json_files = [f for f in os.listdir(folder) if f.endswith(".json")]
     except Exception as e:
-        print(f"⚠️ Error reading review data folder '{folder}': {e}")
+        note_failure(f"⚠️ Error reading review data folder '{folder}': {e}")
         return "", hotel_name
 
     if not json_files:
-        print(f"⚠️ No JSON files found in review data folder '{folder}'.")
+        note_failure(f"⚠️ No JSON files found in review data folder '{folder}'.")
         return "", hotel_name
 
     # Use fuzzy matching to find the best file
@@ -54,21 +56,21 @@ def find_closest_json_file(hotel_name: str, folder: str = "Hotel Reviews with cl
         matched_file_path = os.path.join(folder, best_match)
         # Convert back to display name
         matched_display_name = best_match.replace('.json', '').replace('_', ' ')
-        print(f"📂 Matched hotel '{hotel_name}' to file: {best_match} (score={score})")
+        logger.info(f"📂 Matched hotel '{hotel_name}' to file: {best_match} (score={score})")
         return matched_file_path, matched_display_name
     except Exception as e:
-        print(f"⚠️ Error during fuzzy matching for hotel '{hotel_name}': {e}")
+        note_failure(f"⚠️ Error during fuzzy matching for hotel '{hotel_name}': {e}")
         # Fallback: try exact match or first file
         for f in json_files:
             if normalized_hotel_name in f.lower() or f.lower().startswith(normalized_hotel_name):
                  matched_file_path = os.path.join(folder, f)
                  matched_display_name = f.replace('.json', '').replace('_', ' ')
-                 print(f"📂 Fallback match for hotel '{hotel_name}' to file: {f}")
+                 logger.info(f"📂 Fallback match for hotel '{hotel_name}' to file: {f}")
                  return matched_file_path, matched_display_name
         # If no good match, return the first file or empty
         fallback_file = json_files[0] if json_files else ""
         matched_display_name = fallback_file.replace('.json', '').replace('_', ' ') if fallback_file else hotel_name
-        print(f"📂 No good match found, using fallback file: {fallback_file}")
+        logger.info(f"📂 No good match found, using fallback file: {fallback_file}")
         return os.path.join(folder, fallback_file) if fallback_file else "", matched_display_name
 
 
@@ -98,7 +100,7 @@ def extract_claims(reviews: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
                         positive_claims.append(claim_obj)
                     elif polarity == "negative":
                         negative_claims.append(claim_obj)
-    print(f"🧹 Extracted {len(positive_claims)} positive claims and {len(negative_claims)} negative claims")
+    logger.info(f"🧹 Extracted {len(positive_claims)} positive claims and {len(negative_claims)} negative claims")
     return positive_claims, negative_claims
 
 
@@ -106,18 +108,19 @@ def find_top_similar_claims(target_claim_text: str, claims_list: List[Dict], top
     """
     Finds the top_k most similar claims to the target claim text using SBERT embeddings.
     """
+    sbert_model = models.get_sbert()
     if not claims_list or not sbert_model:
         return []
 
-    print(f"🔍 Finding top {top_k} similar claims to the target claim...")
+    logger.info(f"🔍 Finding top {top_k} similar claims to the target claim...")
     claim_texts = [c["text"] for c in claims_list]
-    
+
     try:
         claim_emb = sbert_model.encode(target_claim_text, convert_to_tensor=True)
         review_embs = sbert_model.encode(claim_texts, convert_to_tensor=True)
         scores = util.cos_sim(claim_emb, review_embs)[0]
         top_indices = scores.argsort(descending=True)[:top_k]
-        
+
         results = []
         for i in top_indices:
             original_claim = claims_list[i]
@@ -130,13 +133,13 @@ def find_top_similar_claims(target_claim_text: str, claims_list: List[Dict], top
             })
         return results
     except Exception as e:
-        print(f"⚠️ Error finding similar claims: {e}")
+        note_failure(f"⚠️ Error finding similar claims: {e}")
         return []
 
 
 def classify_review_stance(user_claim: str, review_claim: str) -> Tuple[str, float, Optional[bool]]:
     """
-    Classifies the stance of a review claim towards a user claim using the Groq LLM.
+    Classifies the stance of a review claim towards a user claim using the local LLM.
     Returns a tuple: (stance: str, confidence: float, had_api_error: Optional[bool]).
     Stance is one of 'supports', 'contradicts', 'neutral'.
     Confidence is between 0.0 and 1.0.
@@ -149,57 +152,23 @@ Classify the review claim:
 - "supports": The review claim supports or agrees with the user claim
 - "contradicts": The review claim contradicts or disagrees with the user claim  
 - "neutral": The review claim doesn't relate enough to make a stance judgment or is neither supporting nor contradicting the user claim
-Respond with ONLY the classification and a confidence score from 0.0 to 1.0, separated by a comma.
-Format: classification,confidence_score
-Example: supports,0.85
+Respond with ONLY a JSON object with the classification and a confidence score from 0.0 to 1.0.
+Format: {{"classification": "...", "confidence_score": 0.0}}
+Example: {{"classification": "supports", "confidence_score": 0.85}}
 """
     try:
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile", # Using Groq's Llama model
-            temperature=0.1,
-        )
-        result_text = chat_completion.choices[0].message.content.strip().lower()
-        # Parse the response
-        parts = result_text.split(',')
-        if len(parts) >= 2:
-            stance = parts[0].strip()
-            try:
-                confidence = float(parts[1].strip())
-            except ValueError:
-                confidence = 0.5 # Default if parsing fails
-            
-            # Ensure stance is one of the expected values
-            if stance not in ['supports', 'contradicts', 'neutral']:
-                # Fallback parsing if format is different
-                if 'support' in result_text:
-                    stance = 'supports'
-                elif 'contradict' in result_text:
-                    stance = 'contradicts'
-                else:
-                    stance = 'neutral'
-                confidence = 0.5  # Default confidence
-            
-            # Override to neutral if confidence is below 0.75 (as per original logic)
-            if confidence < 0.75:
-                stance = 'neutral'
-                
-        else:
-            # Fallback parsing
-            if 'support' in result_text:
-                stance = 'supports'
-            elif 'contradict' in result_text:
-                stance = 'contradicts'
-            else:
-                stance = 'neutral'
-            confidence = 0.5
-            
-        return stance, confidence, None  # Third value indicates error status (None = no error)
-
+        answer = llm.ask_json(prompt, StanceAnswer)
     except Exception as e:
-        print(f"⚠️ Error with Groq API in classify_review_stance: {e}")
+        note_failure(f"⚠️ Error with the LLM in classify_review_stance: {e}")
         # Return neutral with low confidence and mark as error
         return "neutral", 0.3, True
+
+    stance = answer["classification"]
+    confidence = answer["confidence_score"]
+    # Override to neutral if confidence is below 0.75 (as per original logic)
+    if confidence < 0.75:
+        stance = 'neutral'
+    return stance, confidence, None  # Third value indicates error status (None = no error)
 
 
 def determine_verdict(support: int, contradict: int, neutral: int) -> Tuple[str, float]:
@@ -232,10 +201,188 @@ def determine_verdict(support: int, contradict: int, neutral: int) -> Tuple[str,
     return verdict, confidence
 
 
+# --- Opinion checker graph: load the reviews, classify stances, aggregate ---
+
+class OpinionState(TypedDict, total=False):
+    claim_id: str
+    claim_text: str
+    hotel_name: str
+    claim_type: str
+    matched_hotel: str
+    positive_claims: List[Dict[str, Any]]
+    negative_claims: List[Dict[str, Any]]
+    support: int
+    contradict: int
+    neutral: int
+    api_error_count: int
+    all_evidence: List[Dict[str, Any]]
+    result: Dict[str, Any]
+
+
+def _failed(claim_id, claim_text, matched_hotel, error):
+    return {
+        "claim_id": claim_id,
+        "claim_text": claim_text,
+        "verdict": "unable_to_verify",
+        "aggregation_results": {
+            "supports": 0,
+            "contradicts": 0,
+            "neutral": 0
+        },
+        "matched_hotel": matched_hotel,
+        "confidence_score": 0.0,
+        "evidence": {"error": error}
+    }
+
+
+def load_reviews(state: OpinionState) -> Dict[str, Any]:
+    """Find the hotel's review file and split its claims into positive and negative ones."""
+    claim_id = state.get("claim_id")
+    claim_text = state.get("claim_text")
+    hotel_name = state.get("hotel_name")
+
+    if not all([claim_id, claim_text, hotel_name]):
+        return {"result": _failed(claim_id or "unknown", claim_text or "", hotel_name or "", "Missing required input parameters")}
+
+    logger.info(f"\n=== 📋 Evaluating Opinion Claim: '{claim_text}' @ Hotel: '{hotel_name}' ===")
+
+    if not models.get_sbert():
+        return {"result": _failed(claim_id, claim_text, hotel_name, "SentenceTransformer model not loaded")}
+
+    json_file_path, matched_hotel = find_closest_json_file(hotel_name)
+
+    if not json_file_path or not os.path.exists(json_file_path):
+        logger.info(f"❌ File not found: {json_file_path}")
+        # Use original if matching failed
+        return {"result": _failed(claim_id, claim_text, hotel_name, with_reasons(f"No JSON file found for '{hotel_name}'"))}
+
+    try:
+        with open(json_file_path, "r", encoding="utf-8") as f:
+            reviews = json.load(f)
+    except Exception as e:
+        logger.warning(f"❌ Error reading JSON file '{json_file_path}': {e}")
+        return {"result": _failed(claim_id, claim_text, matched_hotel, f"Failed to read review data: {str(e)}")}
+
+    # Extract claims from reviews
+    positive_claims, negative_claims = extract_claims(reviews)
+    if not positive_claims and not negative_claims:
+        logger.info("❌ No valid claims found in review data")
+        return {"result": _failed(claim_id, claim_text, matched_hotel, "No valid claims found in review data")}
+
+    return {"matched_hotel": matched_hotel, "positive_claims": positive_claims, "negative_claims": negative_claims}
+
+
+def classify_stances(state: OpinionState) -> Dict[str, Any]:
+    """Classify the 10 most similar positive and the 10 most similar negative claims against the claim."""
+    claim_text = state["claim_text"]
+    support = contradict = neutral = 0
+    api_error_count = 0
+    all_evidence = []
+
+    # Process positive claims, then negative claims, separately
+    for polarity, claims in (("positive", state["positive_claims"]), ("negative", state["negative_claims"])):
+        logger.info(f"\n🔍 Analyzing {polarity.upper()} claims...")
+        if not claims:
+            continue
+        for idx, claim_data in enumerate(find_top_similar_claims(claim_text, claims), start=1):
+            review_claim = claim_data["text"]
+            logger.info(f"\n🔹 {polarity.capitalize()} Claim {idx} (Similarity: {claim_data['similarity']:.4f}):\n\"{review_claim[:100]}...\"\n")
+            stance, conf, had_error = classify_review_stance(claim_text, review_claim)
+            logger.info(f"➡️ Classified as: {stance.upper()} (Confidence: {conf:.2f})")
+            if had_error:
+                api_error_count += 1
+                logger.warning("⚠️ This classification had an API error")
+            all_evidence.append({
+                "text": review_claim,
+                "similarity_score": claim_data["similarity"],
+                "stance": stance,
+                "confidence": conf,
+                "polarity": polarity
+            })
+            if stance == "supports":
+                support += 1
+            elif stance == "contradicts":
+                contradict += 1
+            else:
+                neutral += 1
+
+    logger.info(f"\n✅ Summary for Claim: '{claim_text}'")
+    logger.info(f"✔️ Support: {support} | ❌ Contradict: {contradict} | ⚖️ Neutral: {neutral}")
+    logger.info(f"⚠️ API Errors: {api_error_count}")
+    return {
+        "support": support,
+        "contradict": contradict,
+        "neutral": neutral,
+        "api_error_count": api_error_count,
+        "all_evidence": all_evidence
+    }
+
+
+def aggregate(state: OpinionState) -> Dict[str, Any]:
+    """Turn the stance counts into the claim verdict."""
+    support, contradict, neutral = state["support"], state["contradict"], state["neutral"]
+    api_error_count = state["api_error_count"]
+    positive_claims, negative_claims = state["positive_claims"], state["negative_claims"]
+
+    # Updated verdict determination logic
+    if api_error_count == (len(positive_claims) + len(negative_claims)) and api_error_count > 0:
+        verdict = "unable_to_verify"
+        confidence = 0.0
+    elif api_error_count > 0 and support + contradict == 0:
+        verdict = "unable_to_verify"
+        confidence = 0.0
+    elif support + contradict == 0:
+        verdict = "unable_to_verify"
+        confidence = 0.3
+    else:
+        verdict_str, confidence = determine_verdict(support, contradict, neutral)
+        verdict = verdict_str  # Keep as string: "true", "false", or "unable_to_verify"
+
+    logger.info(f"⚖️ VERDICT: {'TRUE' if verdict == 'true' else 'FALSE' if verdict == 'false' else 'UNABLE_TO_VERIFY'}")
+    logger.info(f"🎯 CONFIDENCE: {confidence:.2f}")
+
+    return {"result": {
+        "claim_id": state["claim_id"],
+        "claim_text": state["claim_text"],
+        "verdict": verdict,
+        "aggregation_results": {
+            "supports": support,
+            "contradicts": contradict,
+            "neutral": neutral,
+            "api_errors": api_error_count
+        },
+        "matched_hotel": state["matched_hotel"],
+        "confidence_score": confidence,
+        "evidence": {
+            "matched_reviews": state["all_evidence"],
+            "api_error_count": api_error_count
+        }
+    }}
+
+
+def build_opinion_graph():
+    builder = StateGraph(OpinionState)
+    builder.add_node("load_reviews", load_reviews)
+    builder.add_node("classify_stances", classify_stances)
+    builder.add_node("aggregate", aggregate)
+    builder.add_edge(START, "load_reviews")
+    builder.add_conditional_edges(
+        "load_reviews",
+        lambda state: END if state.get("result") is not None else "classify_stances",
+        ["classify_stances", END],
+    )
+    builder.add_edge("classify_stances", "aggregate")
+    builder.add_edge("aggregate", END)
+    return builder.compile()
+
+
+opinion_graph = build_opinion_graph()
+
+
 def check_opinion_claim(input_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main function to evaluate a single opinion claim using other hotel reviews.
-    
+
     Expected input format:
     {
         "claim_id": "claim_1",
@@ -255,195 +402,9 @@ def check_opinion_claim(input_data: Dict[str, Any]) -> Dict[str, Any]:
     }
     """
     try:
-        claim_id = input_data.get("claim_id")
-        claim_text = input_data.get("claim_text")
-        hotel_name = input_data.get("hotel_name")
-        
-        if not all([claim_id, claim_text, hotel_name]):
-             return {
-                "claim_id": claim_id or "unknown",
-                "claim_text": claim_text or "",
-                "verdict": "unable_to_verify",
-                "aggregation_results": {
-                    "supports": 0,
-                    "contradicts": 0,
-                    "neutral": 0
-                },
-                "matched_hotel": hotel_name or "",
-                "confidence_score": 0.0,
-                "evidence": {"error": "Missing required input parameters"}
-            }
-
-        print(f"\n=== 📋 Evaluating Opinion Claim: '{claim_text}' @ Hotel: '{hotel_name}' ===")
-        
-        if not sbert_model:
-             return {
-                "claim_id": claim_id,
-                "claim_text": claim_text,
-                "verdict": "unable_to_verify",
-                "aggregation_results": {
-                    "supports": 0,
-                    "contradicts": 0,
-                    "neutral": 0
-                },
-                "matched_hotel": hotel_name,
-                "confidence_score": 0.0,
-                "evidence": {"error": "SentenceTransformer model not loaded"}
-            }
-        
-        json_file_path, matched_hotel = find_closest_json_file(hotel_name)
-        
-        if not json_file_path or not os.path.exists(json_file_path):
-            print(f"❌ File not found: {json_file_path}")
-            return {
-                "claim_id": claim_id,
-                "claim_text": claim_text,
-                "verdict": "unable_to_verify",
-                "aggregation_results": {
-                    "supports": 0,
-                    "contradicts": 0,
-                    "neutral": 0
-                },
-                "matched_hotel": hotel_name, # Use original if matching failed
-                "confidence_score": 0.0,
-                "evidence": {"error": f"No JSON file found for '{hotel_name}'"}
-            }
-
-        try:
-            with open(json_file_path, "r", encoding="utf-8") as f:
-                reviews = json.load(f)
-        except Exception as e:
-            print(f"❌ Error reading JSON file '{json_file_path}': {e}")
-            return {
-                "claim_id": claim_id,
-                "claim_text": claim_text,
-                "verdict": "unable_to_verify",
-                "aggregation_results": {
-                    "supports": 0,
-                    "contradicts": 0,
-                    "neutral": 0
-                },
-                "matched_hotel": matched_hotel,
-                "confidence_score": 0.0,
-                "evidence": {"error": f"Failed to read review data: {str(e)}"}
-            }
-
-        # Extract claims from reviews
-        positive_claims, negative_claims = extract_claims(reviews)
-        if not positive_claims and not negative_claims:
-            print("❌ No valid claims found in review data")
-            return {
-                "claim_id": claim_id,
-                "claim_text": claim_text,
-                "verdict": "unable_to_verify",
-                "aggregation_results": {
-                    "supports": 0,
-                    "contradicts": 0,
-                    "neutral": 0
-                },
-                "matched_hotel": matched_hotel,
-                "confidence_score": 0.0,
-                "evidence": {"error": "No valid claims found in review data"}
-            }
-
-        # Process both positive and negative claims separately
-        support = contradict = neutral = 0
-        api_error_count = 0
-        all_evidence = []
-        
-        # Process positive claims
-        print("\n🔍 Analyzing POSITIVE claims...")
-        if positive_claims:
-            top_positive_claims = find_top_similar_claims(claim_text, positive_claims)
-            for idx, claim_data in enumerate(top_positive_claims, start=1):
-                review_claim = claim_data["text"]
-                print(f"\n🔹 Positive Claim {idx} (Similarity: {claim_data['similarity']:.4f}):\n\"{review_claim[:100]}...\"\n")
-                stance, conf, had_error = classify_review_stance(claim_text, review_claim)
-                print(f"➡️ Classified as: {stance.upper()} (Confidence: {conf:.2f})")
-                if had_error:
-                    api_error_count += 1
-                    print("⚠️ This classification had an API error")
-                all_evidence.append({
-                    "text": review_claim,
-                    "similarity_score": claim_data["similarity"],
-                    "stance": stance,
-                    "confidence": conf,
-                    "polarity": "positive"
-                })
-                if stance == "supports":
-                    support += 1
-                elif stance == "contradicts":
-                    contradict += 1
-                else:
-                    neutral += 1
-
-        # Process negative claims
-        print("\n🔍 Analyzing NEGATIVE claims...")
-        if negative_claims:
-            top_negative_claims = find_top_similar_claims(claim_text, negative_claims)
-            for idx, claim_data in enumerate(top_negative_claims, start=1):
-                review_claim = claim_data["text"]
-                print(f"\n🔹 Negative Claim {idx} (Similarity: {claim_data['similarity']:.4f}):\n\"{review_claim[:100]}...\"\n")
-                stance, conf, had_error = classify_review_stance(claim_text, review_claim)
-                print(f"➡️ Classified as: {stance.upper()} (Confidence: {conf:.2f})")
-                if had_error:
-                    api_error_count += 1
-                    print("⚠️ This classification had an API error")
-                all_evidence.append({
-                    "text": review_claim,
-                    "similarity_score": claim_data["similarity"],
-                    "stance": stance,
-                    "confidence": conf,
-                    "polarity": "negative"
-                })
-                if stance == "supports":
-                    support += 1
-                elif stance == "contradicts":
-                    contradict += 1
-                else:
-                    neutral += 1
-
-        print(f"\n✅ Summary for Claim: '{claim_text}'")
-        print(f"✔️ Support: {support} | ❌ Contradict: {contradict} | ⚖️ Neutral: {neutral}")
-        print(f"⚠️ API Errors: {api_error_count}")
-
-        # Updated verdict determination logic
-        if api_error_count == (len(positive_claims) + len(negative_claims)) and api_error_count > 0:
-            verdict = "unable_to_verify"
-            confidence = 0.0
-        elif api_error_count > 0 and support + contradict == 0:
-            verdict = "unable_to_verify"
-            confidence = 0.0
-        elif support + contradict == 0:
-            verdict = "unable_to_verify"
-            confidence = 0.3
-        else:
-            verdict_str, confidence = determine_verdict(support, contradict, neutral)
-            verdict = verdict_str  # Keep as string: "true", "false", or "unable_to_verify"
-
-        print(f"⚖️ VERDICT: {'TRUE' if verdict == 'true' else 'FALSE' if verdict == 'false' else 'UNABLE_TO_VERIFY'}")
-        print(f"🎯 CONFIDENCE: {confidence:.2f}")
-
-        return {
-            "claim_id": claim_id,
-            "claim_text": claim_text,
-            "verdict": verdict,  
-            "aggregation_results": {
-                "supports": support,
-                "contradicts": contradict,
-                "neutral": neutral,
-                "api_errors": api_error_count
-            },
-            "matched_hotel": matched_hotel,
-            "confidence_score": confidence,
-            "evidence": {
-                "matched_reviews": all_evidence,  
-                "api_error_count": api_error_count
-            }
-        }
-
+        return opinion_graph.invoke(input_data)["result"]
     except Exception as e:
-        print(f"❌ Error in check_opinion_claim: {e}")
+        note_failure(f"❌ Error in check_opinion_claim: {e}")
         return {
             "claim_id": input_data.get("claim_id", "unknown"),
             "claim_text": input_data.get("claim_text", ""),
@@ -457,17 +418,3 @@ def check_opinion_claim(input_data: Dict[str, Any]) -> Dict[str, Any]:
             "confidence_score": 0.0,
             "evidence": {"error": f"Processing error: {str(e)}"}
         }
-
-# Example usage (if run directly for testing):
-# if __name__ == "__main__":
-#     # Ensure .env is loaded if running this script directly
-#     # from dotenv import load_dotenv # pip install python-dotenv
-#     # load_dotenv()
-#     # test_data = {
-#     #     "claim_id": "test_claim_1",
-#     #     "claim_text": "The staff was incredibly friendly.",
-#     #     "hotel_name": "Grand Plaza Hotel"
-#     # }
-#     # result = check_opinion_claim(test_data)
-#     # print(json.dumps(result, indent=2))
-#     pass

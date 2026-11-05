@@ -1,7 +1,9 @@
 # agents/final_judge.py
 
-import time
-from typing import Dict, List, Any, Union
+import logging
+from typing import Dict, List, Any
+
+logger = logging.getLogger(__name__)
 
 def aggregate_claim_results(
     hotel_name: str,
@@ -39,8 +41,8 @@ def aggregate_claim_results(
                   # Potentially an "error" key if something went wrong in this stage
               }
     """
-    print(f"\n🏛️ STEP 3: FINAL JUDGMENT AND AGGREGATION")
-    print("-" * 45)
+    logger.info(f"\n🏛️ STEP 3: FINAL JUDGMENT AND AGGREGATION")
+    logger.info("-" * 45)
 
     # Combine claims data with checker results
     # This assumes claim_id can be used to match them, or they are in the same order.
@@ -65,7 +67,7 @@ def aggregate_claim_results(
         checker_result = checker_result_map.get(claim_id)
 
         if not checker_result:
-            print(f"   ⚠️  No checker result found for claim ID: {claim_id}. Marking as unable to verify.")
+            logger.warning(f"   ⚠️  No checker result found for claim ID: {claim_id}. Marking as unable to verify.")
             unable_to_verify_claims += 1
             claims_results.append({
                 "claim_id": claim_id,
@@ -99,7 +101,12 @@ def aggregate_claim_results(
             verdict_symbol = "❓"
             verdict_display = "UNABLE_TO_VERIFY"
 
-        print(f"   {verdict_symbol} Claim {i} Verdict: {verdict_display} (Confidence: {confidence:.2f})")
+        logger.info(f"   {verdict_symbol} Claim {i} Verdict: {verdict_display} (Confidence: {confidence:.2f})")
+
+        # The opinion checker returns its aggregation details at the top level of its result
+        additional_data = checker_result.get("additional_data") or {
+            key: checker_result[key] for key in ("aggregation_results", "matched_hotel") if key in checker_result
+        }
 
         # Append the checker result (which should already contain all necessary details)
         # Ensure it has the core claim metadata
@@ -112,7 +119,7 @@ def aggregate_claim_results(
             "checker_used": checker_used,
             "confidence_score": confidence,
             "evidence": checker_result.get("evidence", {}),
-            "additional_data": checker_result.get("additional_data", {})
+            "additional_data": additional_data
         }
         claims_results.append(final_claim_result)
 
@@ -125,17 +132,17 @@ def aggregate_claim_results(
     # If no claims were verifiable, overall verdict is 'unable_to_verify'
     if verifiable_claims == 0:
         overall_verdict = "unable_to_verify"
-        print(f"\n⚖️  Overall Verdict Logic: No verifiable claims found.")
+        logger.info(f"\n⚖️  Overall Verdict Logic: No verifiable claims found.")
     elif true_claims > false_claims:
         overall_verdict = "true" # Mostly True
-        print(f"\n⚖️  Overall Verdict Logic: More true claims ({true_claims}) than false ({false_claims}).")
+        logger.info(f"\n⚖️  Overall Verdict Logic: More true claims ({true_claims}) than false ({false_claims}).")
     elif false_claims > true_claims:
         overall_verdict = "false" # Mostly False
-        print(f"\n⚖️  Overall Verdict Logic: More false claims ({false_claims}) than true ({true_claims}).")
+        logger.info(f"\n⚖️  Overall Verdict Logic: More false claims ({false_claims}) than true ({true_claims}).")
     else:
         # Tie case: true_claims == false_claims and both > 0
         overall_verdict = "unable_to_verify" # Inconclusive
-        print(f"\n⚖️  Overall Verdict Logic: Equal true and false claims ({true_claims}). Inconclusive.")
+        logger.info(f"\n⚖️  Overall Verdict Logic: Equal true and false claims ({true_claims}). Inconclusive.")
 
     # Calculate accuracy rate
     accuracy_rate = round((true_claims / verifiable_claims * 100), 1) if verifiable_claims > 0 else 0.0
@@ -159,12 +166,12 @@ def aggregate_claim_results(
     }
 
     # --- Display Summary (can be moved to main.py if preferred) ---
-    print(f"\n📊 Final Summary:")
-    print(f"   • Total Claims: {summary['total_claims']}")
-    print(f"   • True Claims: {summary['true_claims']}")
-    print(f"   • False Claims: {summary['false_claims']}")
-    print(f"   • Unable to Verify Claims: {summary['unable_to_verify_claims']}")
-    print(f"   • Accuracy Rate (of verifiable): {summary['accuracy_rate']}%")
+    logger.info(f"\n📊 Final Summary:")
+    logger.info(f"   • Total Claims: {summary['total_claims']}")
+    logger.info(f"   • True Claims: {summary['true_claims']}")
+    logger.info(f"   • False Claims: {summary['false_claims']}")
+    logger.info(f"   • Unable to Verify Claims: {summary['unable_to_verify_claims']}")
+    logger.info(f"   • Accuracy Rate (of verifiable): {summary['accuracy_rate']}%")
 
     overall_verdict_display = overall_verdict.upper()
     if overall_verdict == "true":
@@ -174,42 +181,6 @@ def aggregate_claim_results(
     else: # "unable_to_verify"
         overall_symbol = "❓"
 
-    print(f"\n🏆 Overall Review Verdict: {overall_symbol} {overall_verdict_display}")
+    logger.info(f"\n🏆 Overall Review Verdict: {overall_symbol} {overall_verdict_display}")
 
     return final_results
-
-# Example usage (if run directly for testing):
-# if __name__ == "__main__":
-#     # Example data structures (simplified)
-#     test_hotel_name = "Test Hotel"
-#     test_hotel_review = "This is a test review."
-#     test_claims_data = [
-#         {"claim_text": "The hotel has a pool.", "claim_type": "hotel_design_and_features", "claim_nature": "factual"},
-#         {"claim_text": "The staff was friendly.", "claim_type": "service_general", "claim_nature": "opinion"}
-#     ]
-#     test_checker_results = [
-#         {
-#             "claim_id": "claim_1",
-#             "verdict": "true",
-#             "confidence_score": 0.95,
-#             "checker_used": "web_search",
-#             "evidence": {"sources": ["http://example.com"]},
-#             "additional_data": {}
-#         },
-#         {
-#             "claim_id": "claim_2",
-#             "verdict": "unable_to_verify",
-#             "confidence_score": 0.2,
-#             "checker_used": "review",
-#             "evidence": {"matched_reviews": []},
-#             "additional_data": {"aggregation_results": {"supports": 0, "contradicts": 0, "neutral": 5}}
-#         }
-#     ]
-#     result = aggregate_claim_results(
-#         test_hotel_name,
-#         test_hotel_review,
-#         test_claims_data,
-#         test_checker_results
-#     )
-#     import json
-#     print(json.dumps(result, indent=2))
