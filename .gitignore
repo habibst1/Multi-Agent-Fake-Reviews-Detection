@@ -6,9 +6,10 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Ignore the Hotel Reviews data folder (the test fixtures under tests/ are synthetic and tracked)
-/Hotel Reviews with claims/
+# Local data, notebooks and old documents (the test fixtures under tests/ are synthetic and tracked)
+/data/
+/notebooks/
+/archive/
 
-Final Pipeline/
-
-context.txt
+# Results saved by main.py
+/results/

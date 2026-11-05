@@ -1,4 +1,4 @@
-# run_log.py
+# fake_review_detection/run_log.py
 
 import logging
 import os
@@ -7,7 +7,7 @@ import sys
 from contextvars import ContextVar
 from typing import Any, List, Optional
 
-import config
+from fake_review_detection import config
 
 # The claim the current log lines belong to, and the failures caught while checking it.
 # Claims run in parallel threads; each one sets its own values.

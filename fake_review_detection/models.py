@@ -1,4 +1,4 @@
-# models.py
+# fake_review_detection/models.py
 
 import logging
 import threading

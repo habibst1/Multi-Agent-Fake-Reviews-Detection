@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from run_log import redact, redact_value  # noqa: E402
+from fake_review_detection.run_log import redact, redact_value  # noqa: E402
 
 GOOGLE_ERROR = (
     "403 Client Error: Forbidden for url: "

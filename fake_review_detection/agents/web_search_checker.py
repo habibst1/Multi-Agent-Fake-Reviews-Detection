@@ -1,4 +1,4 @@
-# agents/web_search_checker.py
+# fake_review_detection/agents/web_search_checker.py
 
 import logging
 import re
@@ -12,11 +12,9 @@ from PIL import Image
 from pydantic import ValidationError
 from sentence_transformers import util
 
-import config
-import http_client
-import llm
-import models
-from run_log import note_failure, with_reasons
+from fake_review_detection import config, models
+from fake_review_detection.clients import http_client, llm
+from fake_review_detection.run_log import note_failure, with_reasons
 
 logger = logging.getLogger(__name__)
 

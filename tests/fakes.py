@@ -442,5 +442,5 @@ def install(world: World, impl: str) -> None:
     if impl == "legacy":
         sys.modules["groq"] = _fake_groq_module(world)
     else:
-        import llm
+        from fake_review_detection.clients import llm
         llm.ask_json = lambda prompt, schema: TypeAdapter(schema).validate_python(world.answer(prompt)[1])

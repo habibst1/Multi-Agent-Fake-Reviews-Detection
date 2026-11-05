@@ -1,12 +1,12 @@
-# agents/claim_extractor.py
+# fake_review_detection/agents/claim_extractor.py
 
 import json
 import logging
 from typing import Any, Dict, List, Literal, TypedDict
 
-import config
-import llm
-from run_log import note_failure
+from fake_review_detection import config
+from fake_review_detection.clients import llm
+from fake_review_detection.run_log import note_failure
 
 logger = logging.getLogger(__name__)
 

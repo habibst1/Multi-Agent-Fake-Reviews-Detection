@@ -1,4 +1,4 @@
-# llm.py
+# fake_review_detection/clients/llm.py
 
 from typing import Any, Optional
 
@@ -8,8 +8,8 @@ from langchain_ollama import ChatOllama
 from ollama import ResponseError
 from pydantic import TypeAdapter
 
-import config
-from retry import call_with_retries
+from fake_review_detection import config
+from fake_review_detection.clients.retry import call_with_retries
 
 
 def ask_json(prompt: str, schema: Any) -> Any:

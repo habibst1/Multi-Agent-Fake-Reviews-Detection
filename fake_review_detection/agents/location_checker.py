@@ -1,4 +1,4 @@
-# agents/location_checker.py
+# fake_review_detection/agents/location_checker.py
 
 import logging
 import math
@@ -8,10 +8,9 @@ from typing import Any, Dict, Literal, Optional, Tuple, TypedDict
 import requests
 from langgraph.graph import END, START, StateGraph
 
-import config
-import http_client
-import llm
-from run_log import note_failure, with_reasons
+from fake_review_detection import config
+from fake_review_detection.clients import http_client, llm
+from fake_review_detection.run_log import note_failure, with_reasons
 
 logger = logging.getLogger(__name__)
 

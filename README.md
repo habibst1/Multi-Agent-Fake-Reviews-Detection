@@ -6,26 +6,26 @@ This project implements a sophisticated pipeline designed to analyze and fact-ch
 
 The pipeline operates in a series of coordinated steps, utilizing distinct modules (agents) for specific tasks:
 
-1.  **Claim Extraction (`agents/claim_extractor.py`):**
+1.  **Claim Extraction (`fake_review_detection/agents/claim_extractor.py`):**
     *   The process begins by analyzing the input hotel review text.
     *   An LLM identifies and extracts discrete, fact-checkable statements (claims) from the review.
     *   Each extracted claim is classified into a specific category (e.g., `hotel_cleanliness`, `location_general`, `service_general`) and labeled as either `factual` (objectively verifiable) or `opinion` (subjective).
 
 2.  **Parallel Claim Verification:**
     *   The pipeline routes each extracted claim to the most appropriate specialized verification agent based on its type and nature:
-        *   **Location Checker (`agents/location_checker.py`):**
+        *   **Location Checker (`fake_review_detection/agents/location_checker.py`):**
             *   **Target Claims:** Claims categorized as `location_general` and marked as `factual`.
             *   **Process:**
                 *   **Specific Locations:** For claims mentioning a specific place (e.g., "near the Eiffel Tower"), it uses LLMs to identify the destination. It then geocodes the hotel and the specific destination using services like Nominatim. It calculates walking distances and times using OpenRouteService and uses an LLM to judge if the claimed proximity/duration is reasonable.
                 *   **Category-Based Locations:** For claims using general terms (e.g., "near the beach", "close to a restaurant"), it identifies the category ("beach", "restaurant"). It geocodes the hotel and then uses the Geoapify Places API to find the *nearest* places of that specific type. It calculates routes (walking/distance) to these nearby places using OpenRouteService. Finally, an LLM evaluates the claim against the characteristics (distance, time) of these actual nearby locations to determine its validity
-        *   **Web Search Checker (`agents/web_search_checker.py`):**
+        *   **Web Search Checker (`fake_review_detection/agents/web_search_checker.py`):**
             *   **Target Claims:** Factual claims *not* related to `location_general`.
             *   **Process:** Performs targeted Google Search and Google Image Search based on the claim and hotel name. It uses Sentence-BERT (SBERT) to find the most semantically relevant text snippets from search results and CLIP (Contrastive Language-Image Pre-training) to find the most relevant images. An LLM then analyzes this curated evidence to determine if the claim is supported, contradicted, or if there's insufficient evidence.
-        *   **Opinion Checker (`agents/opinion_checker.py`):**
+        *   **Opinion Checker (`fake_review_detection/agents/opinion_checker.py`):**
             *   **Target Claims:** Claims classified as `opinion` (regardless of specific type).
             *   **Process:** Compares the opinion claim against a database of pre-processed hotel reviews (stored as JSON files). It uses SBERT to find reviews or specific claims within reviews that are semantically similar to the target claim. An LLM then analyzes these similar claims to determine if they `support`, `contradict`, or are `neutral` towards the original claim. The final verdict for the opinion claim is based on aggregating these stances.
 
-3.  **Final Judgment (`agents/final_judge.py`):**
+3.  **Final Judgment (`fake_review_detection/agents/final_judge.py`):**
     *   Once all individual claims have been processed by their respective agents, the `final_judge` aggregates the results.
     *   It tallies the number of claims verified as `true`, `false`, and `unable_to_verify`.
     *   Based on this tally (e.g., majority of verifiable claims being true/false), it renders a final verdict on the overall authenticity of the original hotel review.
@@ -34,23 +34,34 @@ The pipeline operates in a series of coordinated steps, utilizing distinct modul
 
 The project is organized into modular components for clarity and maintainability:
 
-*   `agents/`: Contains the core logic for each specialized checker. Each checker runs as its own small LangGraph graph.
-    *   `claim_extractor.py`: Handles claim identification and classification.
-    *   `location_checker.py`: Verifies location-based factual claims.
-    *   `web_search_checker.py`: Verifies general factual claims using web search and image analysis.
-    *   `opinion_checker.py`: Verifies opinion-based claims using a database of other reviews.
-    *   `final_judge.py`: Aggregates individual claim results to determine the final review verdict.
-*   `graph.py`: The LangGraph graph that runs the pipeline: claim extraction, one parallel check per claim, final judgment.
-*   `state.py`: The typed state shared by the graph's nodes.
-*   `llm.py`: Calls the local Ollama model and constrains its answers to a JSON schema.
-*   `config.py`: Settings: Ollama model, API keys, review data folder.
-*   `http_client.py` and `retry.py`: HTTP calls with retries, and Nominatim's limit of one request per second.
-*   `models.py`: Loads the SBERT and CLIP models once and shares them between the checkers.
-*   `run_log.py`: Log lines tagged with their claim, and the failure reasons added to error messages.
-*   `main.py`: The command-line entry point. It runs the graph, prints the results and saves them as JSON.
+*   `main.py`: The command-line entry point. It runs the graph, prints the results and saves them to `results/`.
+*   `fake_review_detection/`: The pipeline itself.
+    *   `agents/`: The claim extractor, the three checkers and the final judge. Each checker runs as its own small LangGraph graph.
+        *   `claim_extractor.py`: Handles claim identification and classification.
+        *   `location_checker.py`: Verifies location-based factual claims.
+        *   `web_search_checker.py`: Verifies general factual claims using web search and image analysis.
+        *   `opinion_checker.py`: Verifies opinion-based claims using a database of other reviews.
+        *   `final_judge.py`: Aggregates individual claim results to determine the final review verdict.
+    *   `clients/`: The code that talks to the outside world.
+        *   `llm.py`: Calls the local Ollama model and constrains its answers to a JSON schema.
+        *   `http_client.py` and `retry.py`: HTTP calls with retries, and Nominatim's limit of one request per second.
+    *   `graph.py`: The LangGraph graph that runs the pipeline: claim extraction, one parallel check per claim, final judgment.
+    *   `state.py`: The typed state shared by the graph's nodes.
+    *   `config.py`: Settings: Ollama model, API keys, data and results folders.
+    *   `models.py`: Loads the SBERT and CLIP models once and shares them between the checkers.
+    *   `run_log.py`: Log lines tagged with their claim, failure reasons added to error messages, and API keys kept out of both.
 *   `tests/`: Equivalence tests against the original pipeline, and answer-format checks against the local model.
-*   `docs/graph.md`: Diagrams of every graph, generated from the code with `python graph.py`.
+*   `docs/graph.md`: Diagrams of every graph, generated from the code with `python -m fake_review_detection.graph`.
+*   `docs/examples/`: A saved run of the original pipeline (Groq models, September 2025).
 *   `.env`: (Not included in repo) Stores sensitive API keys required for external services. See `.env.example`.
+
+These folders stay on your machine and are not in the repository:
+
+*   `data/reviews/`: The scraped Booking.com reviews (12 hotels).
+*   `data/reviews_with_claims/`: The same reviews with their extracted claims (5 hotels), used by the opinion checker.
+*   `notebooks/`: The notebooks that scrape the reviews, extract their claims and try the claim verification.
+*   `archive/`: The original technical documentation.
+*   `results/`: The results of each run.
 
 ## Setup and Usage
 
@@ -67,14 +78,14 @@ The pipeline runs on [LangGraph](https://docs.langchain.com/oss/python/langgraph
     python -m pip install -r requirements.txt
     ```
 3.  Copy `.env.example` to `.env` and fill in the API keys (OpenRouteService, Geoapify, Google Custom Search).
-4.  Put the review database (`Hotel Reviews with claims/`) in the project folder, or set `REVIEWS_DIR` in `.env` to its location.
+4.  Put the review database in `data/reviews_with_claims/`, or set `REVIEWS_DIR` in `.env` to its location.
 5.  Run the README example, or your own review:
     ```bash
     python main.py
     python main.py --hotel "Burj Al Arab" --review "Staff service was excellent. Located 15 minutes from Dubai Mall."
     python main.py --sequential     # one claim at a time, like the original loop
     ```
-    The results are printed and saved to `<hotel>_fact_check_results_<timestamp>.json`.
+    The results are printed and saved to `results/<hotel>_fact_check_results_<timestamp>.json`.
 
 The first claim that goes to web search downloads the CLIP weights (about 900 MB). The default model, `llama3.2:3b`, fits a 4 GB GPU; a larger model extracts and classifies claims more accurately. Set `OLLAMA_MODEL` in `.env` to use another model.
 

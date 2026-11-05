@@ -8,15 +8,15 @@ import sys
 import time
 from typing import Dict, Any
 
-import config
-import llm
-from run_log import setup_logging
+from fake_review_detection import config
+from fake_review_detection.clients import llm
+from fake_review_detection.run_log import setup_logging
 
 setup_logging()
 
 # --- Import the review graph (it imports every agent) ---
 try:
-    from graph import run_review
+    from fake_review_detection.graph import run_review
     print("✅ All agent modules imported successfully.")
 except ImportError as e:
     print(f"❌ Error importing agent modules: {e}")
@@ -153,7 +153,8 @@ if __name__ == "__main__":
     display_results(results)
 
     # Optionally, save the full results to a JSON file
-    output_filename = f"{args.hotel}_fact_check_results_{int(time.time())}.json"
+    config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    output_filename = config.RESULTS_DIR / f"{args.hotel}_fact_check_results_{int(time.time())}.json"
     with open(output_filename, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
     print(f"\n💾 Full results saved to '{output_filename}'")

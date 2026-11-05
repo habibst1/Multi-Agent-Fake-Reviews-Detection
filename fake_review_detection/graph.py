@@ -1,4 +1,4 @@
-# graph.py
+# fake_review_detection/graph.py
 
 import logging
 from pathlib import Path
@@ -7,14 +7,14 @@ from typing import Any, Dict, List
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
-import config
-from agents.claim_extractor import extract_claims_pipeline
-from agents.final_judge import aggregate_claim_results
-from agents.location_checker import check_location_claim, location_graph
-from agents.opinion_checker import check_opinion_claim, opinion_graph
-from agents.web_search_checker import check_web_search_claim, web_search_graph
-from run_log import redact_value, start_scope, with_reasons
-from state import ClaimTask, ReviewState
+from fake_review_detection import config
+from fake_review_detection.agents.claim_extractor import extract_claims_pipeline
+from fake_review_detection.agents.final_judge import aggregate_claim_results
+from fake_review_detection.agents.location_checker import check_location_claim, location_graph
+from fake_review_detection.agents.opinion_checker import check_opinion_claim, opinion_graph
+from fake_review_detection.agents.web_search_checker import check_web_search_claim, web_search_graph
+from fake_review_detection.run_log import redact_value, start_scope, with_reasons
+from fake_review_detection.state import ClaimTask, ReviewState
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ def write_graph_docs(path: Path = config.PROJECT_ROOT / "docs" / "graph.md") -> 
     sections: List[str] = [
         "# Pipeline graphs",
         "",
-        "Generated from the compiled LangGraph graphs with `python graph.py`.",
+        "Generated from the compiled LangGraph graphs with `python -m fake_review_detection.graph`.",
         "",
     ]
     for title, graph in [

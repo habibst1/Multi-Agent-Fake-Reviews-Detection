@@ -1,4 +1,4 @@
-# agents/opinion_checker.py
+# fake_review_detection/agents/opinion_checker.py
 
 import json
 import logging
@@ -10,10 +10,9 @@ from fuzzywuzzy import process
 from langgraph.graph import END, START, StateGraph
 from sentence_transformers import util
 
-import config
-import llm
-import models
-from run_log import note_failure, with_reasons
+from fake_review_detection import config, models
+from fake_review_detection.clients import llm
+from fake_review_detection.run_log import note_failure, with_reasons
 
 logger = logging.getLogger(__name__)
 

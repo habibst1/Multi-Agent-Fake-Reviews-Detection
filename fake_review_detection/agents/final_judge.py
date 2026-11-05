@@ -1,4 +1,4 @@
-# agents/final_judge.py
+# fake_review_detection/agents/final_judge.py
 
 import logging
 from typing import Dict, List, Any

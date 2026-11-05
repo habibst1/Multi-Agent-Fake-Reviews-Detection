@@ -1,4 +1,4 @@
-# state.py
+# fake_review_detection/state.py
 
 import operator
 from typing import Annotated, Any, Dict, List, TypedDict

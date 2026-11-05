@@ -1,6 +1,6 @@
 # Pipeline graphs
 
-Generated from the compiled LangGraph graphs with `python graph.py`.
+Generated from the compiled LangGraph graphs with `python -m fake_review_detection.graph`.
 
 ## Review graph
 

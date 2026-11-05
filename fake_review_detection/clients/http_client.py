@@ -1,4 +1,4 @@
-# http_client.py
+# fake_review_detection/clients/http_client.py
 
 import threading
 import time
@@ -6,7 +6,7 @@ from typing import Callable
 
 import requests
 
-from retry import call_with_retries
+from fake_review_detection.clients.retry import call_with_retries
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 

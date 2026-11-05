@@ -12,11 +12,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import llm  # noqa: E402
-from agents.claim_extractor import ClassifiedClaim, ExtractedClaim, build_prompt_classify, build_prompt_extract  # noqa: E402
-from agents.location_checker import ExtractedDestination, LocationJudgment  # noqa: E402
-from agents.opinion_checker import StanceAnswer  # noqa: E402
-from agents.web_search_checker import ClaimVerification, RankedEvidence, SufficiencyCheck  # noqa: E402
+from fake_review_detection.agents.claim_extractor import ClassifiedClaim, ExtractedClaim, build_prompt_classify, build_prompt_extract  # noqa: E402
+from fake_review_detection.agents.location_checker import ExtractedDestination, LocationJudgment  # noqa: E402
+from fake_review_detection.agents.opinion_checker import StanceAnswer  # noqa: E402
+from fake_review_detection.agents.web_search_checker import ClaimVerification, RankedEvidence, SufficiencyCheck  # noqa: E402
+from fake_review_detection.clients import llm  # noqa: E402
 
 pytestmark = pytest.mark.skipif(llm.check_ollama() is not None, reason="Ollama is not running with the configured model")
 

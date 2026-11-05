@@ -1,4 +1,4 @@
-# retry.py
+# fake_review_detection/clients/retry.py
 
 import logging
 import time
