@@ -1,12 +1,14 @@
 # Ignore environment variables file
 .env
 
-agents/__pycache__
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
 
-# Ignore the Hotel Reviews data folder
-Hotel Reviews with claims/
+# Ignore the Hotel Reviews data folder (the test fixtures under tests/ are synthetic and tracked)
+/Hotel Reviews with claims/
 
 Final Pipeline/
 
 context.txt
-
