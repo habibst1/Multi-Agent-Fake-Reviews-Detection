@@ -34,14 +34,61 @@ The pipeline operates in a series of coordinated steps, utilizing distinct modul
 
 The project is organized into modular components for clarity and maintainability:
 
-*   `agents/`: Contains the core logic for each specialized checker.
+*   `agents/`: Contains the core logic for each specialized checker. Each checker runs as its own small LangGraph graph.
     *   `claim_extractor.py`: Handles claim identification and classification.
     *   `location_checker.py`: Verifies location-based factual claims.
     *   `web_search_checker.py`: Verifies general factual claims using web search and image analysis.
     *   `opinion_checker.py`: Verifies opinion-based claims using a database of other reviews.
     *   `final_judge.py`: Aggregates individual claim results to determine the final review verdict.
-*   `main.py`: The main orchestrator script that runs the entire pipeline.
-*   `.env`: (Not included in repo) Stores sensitive API keys required for external services.
+*   `graph.py`: The LangGraph graph that runs the pipeline: claim extraction, one parallel check per claim, final judgment.
+*   `state.py`: The typed state shared by the graph's nodes.
+*   `llm.py`: Calls the local Ollama model and constrains its answers to a JSON schema.
+*   `config.py`: Settings: Ollama model, API keys, review data folder.
+*   `http_client.py` and `retry.py`: HTTP calls with retries, and Nominatim's limit of one request per second.
+*   `models.py`: Loads the SBERT and CLIP models once and shares them between the checkers.
+*   `run_log.py`: Log lines tagged with their claim, and the failure reasons added to error messages.
+*   `main.py`: The command-line entry point. It runs the graph, prints the results and saves them as JSON.
+*   `tests/`: Equivalence tests against the original pipeline, and answer-format checks against the local model.
+*   `docs/graph.md`: Diagrams of every graph, generated from the code with `python graph.py`.
+*   `.env`: (Not included in repo) Stores sensitive API keys required for external services. See `.env.example`.
+
+## Setup and Usage
+
+The pipeline runs on [LangGraph](https://docs.langchain.com/oss/python/langgraph/) with a local LLM served by [Ollama](https://ollama.com).
+
+1.  Install Ollama, start it, and pull the model:
+    ```bash
+    ollama pull llama3.2:3b
+    ```
+2.  Create a virtual environment and install the dependencies (Python 3.10 or newer):
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate          # on macOS or Linux: source .venv/bin/activate
+    python -m pip install -r requirements.txt
+    ```
+3.  Copy `.env.example` to `.env` and fill in the API keys (OpenRouteService, Geoapify, Google Custom Search).
+4.  Put the review database (`Hotel Reviews with claims/`) in the project folder, or set `REVIEWS_DIR` in `.env` to its location.
+5.  Run the README example, or your own review:
+    ```bash
+    python main.py
+    python main.py --hotel "Burj Al Arab" --review "Staff service was excellent. Located 15 minutes from Dubai Mall."
+    python main.py --sequential     # one claim at a time, like the original loop
+    ```
+    The results are printed and saved to `<hotel>_fact_check_results_<timestamp>.json`.
+
+The first claim that goes to web search downloads the CLIP weights (about 900 MB). The default model, `llama3.2:3b`, fits a 4 GB GPU; a larger model extracts and classifies claims more accurately. Set `OLLAMA_MODEL` in `.env` to use another model.
+
+### How the graph runs
+
+`extract_claims` turns the review into claims. `route_claims` applies the routing rules and sends each claim to its checker with LangGraph's `Send`, so the claims are checked in parallel, at most `MAX_CONCURRENCY` at a time (2 by default). The web search checker loops on its sufficiency check, from the top 1 to the top 3 pieces of evidence. `final_judge` combines the verdicts once every check has finished. [docs/graph.md](docs/graph.md) shows each graph.
+
+### Tests
+
+```bash
+python -m pytest
+```
+
+`tests/test_equivalence.py` runs each scenario through the original code (a copy in `tests/legacy/`) and through the LangGraph version, with the same fake LLM answers and fake web services, and checks that both give the same results. `tests/test_ollama_schemas.py` checks that the local model answers in every format the pipeline asks for; it is skipped when Ollama is not running.
 
 ## Key Features
 
