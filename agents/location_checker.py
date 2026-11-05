@@ -229,7 +229,7 @@ def geocode_location_bounded(location_name, center_coords=None, radii=[5, 15, 30
                 "viewbox": f"{west},{north},{east},{south}"
             }
             headers = {
-                "User-Agent": "LocationFactChecker/1.0 (contact@example.com)"
+                "User-Agent": config.NOMINATIM_USER_AGENT
             }
             response = http_client.get(url, params=params, headers=headers, timeout=10)
             response.raise_for_status()
@@ -270,7 +270,7 @@ def geocode_location(location_name):
             "addressdetails": 1
         }
         headers = {
-            "User-Agent": "LocationFactChecker/1.0 (contact@example.com)"
+            "User-Agent": config.NOMINATIM_USER_AGENT
         }
         response = http_client.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()

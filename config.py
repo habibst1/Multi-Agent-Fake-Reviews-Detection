@@ -22,6 +22,11 @@ LLM_TIMEOUT_SECONDS = 300
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "2"))
 
 # --- External services ---
+# Nominatim refuses generic User-Agents; its usage policy asks for one that identifies the application
+NOMINATIM_USER_AGENT = os.getenv(
+    "NOMINATIM_USER_AGENT",
+    "MultiAgentFakeReviewsDetection/1.0 (+https://github.com/habibst1/Multi-Agent-Fake-Reviews-Detection)",
+)
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
