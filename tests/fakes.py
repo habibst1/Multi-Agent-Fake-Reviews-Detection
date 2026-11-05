@@ -26,6 +26,7 @@ DUMMY_KEYS = {
     "GEOAPIFY_API_KEY": "test-key",
     "GOOGLE_API_KEY": "test-key",
     "SEARCH_ENGINE_ID": "test-engine",
+    "SERPAPI_API_KEY": "test-serpapi-key",
 }
 
 # ----------------------------------------------------------------------------- scenarios
@@ -332,33 +333,49 @@ class World:
             km = _haversine_km(lat1, lon1, lat2, lon2) * 1.3
             return FakeResponse(200, {"routes": [{"summary": {"distance": km * 1000, "duration": km / 5 * 3600}}]})
 
-        if url == "https://www.googleapis.com/customsearch/v1":
-            claim = params["q"].split('" ', 1)[1]
-            found = s.get("google", {}).get(claim, {"text": [], "images": []})
-            slug = re.sub(r"[^a-z]+", "-", claim.lower()).strip("-")
-            if params.get("searchType") == "image":
-                items = [
-                    {
-                        "link": f"https://img.test/{'missing-' if 'missing' in title else ''}{slug}-{i}.png",
-                        "title": title,
-                        "image": {"contextLink": f"https://site.test/{slug}/{i}"},
-                        "snippet": f"{title} at the hotel",
-                    }
-                    for i, title in enumerate(found["images"], 1)
-                ]
-            else:
-                if self._fails("google", claim):
-                    return FakeResponse(500, {"error": "fake search outage"})
-                items = [
-                    {"title": f"{s['hotel']} page {i}", "link": f"https://site.test/{slug}/{i}", "snippet": text}
-                    for i, text in enumerate(found["text"], 1)
-                ]
-            return FakeResponse(200, {"items": items} if items else {})
+        if url in ("https://www.googleapis.com/customsearch/v1", "https://serpapi.com/search"):
+            return self._search(url, params)
 
         if url.startswith("https://img.test/"):
             return FakeResponse(404, b"") if "/missing-" in url else FakeResponse(200, _png(url))
 
         raise AssertionError(f"Unexpected request: {method} {url}")
+
+
+    def _search(self, url, params):
+        """The same results through Google Custom Search (original code) and SerpApi (migrated code)."""
+        s = self.scenario
+        claim = params["q"].split('" ', 1)[1]
+        found = s.get("google", {}).get(claim, {"text": [], "images": []})
+        slug = re.sub(r"[^a-z]+", "-", claim.lower()).strip("-")
+        pages = [(f"{s['hotel']} page {i}", f"https://site.test/{slug}/{i}", text) for i, text in enumerate(found["text"], 1)]
+        images = [
+            (title, f"https://img.test/{'missing-' if 'missing' in title else ''}{slug}-{i}.png", f"https://site.test/{slug}/{i}")
+            for i, title in enumerate(found["images"], 1)
+        ]
+        wants_images = params.get("searchType") == "image" or params.get("engine") == "google_images"
+        if not wants_images and self._fails("google", claim):
+            return FakeResponse(500, {"error": "fake search outage"})
+
+        if url == "https://serpapi.com/search":
+            if wants_images:
+                key, items = "images_results", [
+                    {"position": i, "title": title, "original": image, "link": page, "source": "site.test"}
+                    for i, (title, image, page) in enumerate(images, 1)
+                ]
+            else:
+                key, items = "organic_results", [
+                    {"position": i, "title": title, "link": link, "snippet": snippet}
+                    for i, (title, link, snippet) in enumerate(pages, 1)
+                ]
+            return FakeResponse(200, {key: items} if items else {"error": "Google hasn't returned any results for this query."})
+
+        # The fake Custom Search repeats the title as the image snippet, as the SerpApi client does
+        if wants_images:
+            items = [{"link": image, "title": title, "image": {"contextLink": page}, "snippet": title} for title, image, page in images]
+        else:
+            items = [{"title": title, "link": link, "snippet": snippet} for title, link, snippet in pages]
+        return FakeResponse(200, {"items": items} if items else {})
 
 
 # ----------------------------------------------------------------------------- fake models

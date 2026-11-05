@@ -29,8 +29,8 @@ NOMINATIM_USER_AGENT = os.getenv(
 )
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
+# Web search: SerpApi returns Google web and Google Images results
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
 
 # --- Data ---
 # Reviews with extracted claims, used by the opinion checker
@@ -39,13 +39,12 @@ REVIEWS_DIR = Path(os.getenv("REVIEWS_DIR", str(PROJECT_ROOT / "data" / "reviews
 RESULTS_DIR = Path(os.getenv("RESULTS_DIR", str(PROJECT_ROOT / "results")))
 
 # Environment variables holding secrets; their values never go into logs or results
-SECRET_KEYS = ("ORS_API_KEY", "GEOAPIFY_API_KEY", "GOOGLE_API_KEY")
+SECRET_KEYS = ("ORS_API_KEY", "GEOAPIFY_API_KEY", "SERPAPI_API_KEY")
 
 REQUIRED_KEYS = {
     "ORS_API_KEY": "location checker",
     "GEOAPIFY_API_KEY": "location checker",
-    "GOOGLE_API_KEY": "web search checker",
-    "SEARCH_ENGINE_ID": "web search checker",
+    "SERPAPI_API_KEY": "web search checker",
 }
 
 

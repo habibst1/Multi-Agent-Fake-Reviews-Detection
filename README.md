@@ -20,7 +20,7 @@ The pipeline operates in a series of coordinated steps, utilizing distinct modul
                 *   **Category-Based Locations:** For claims using general terms (e.g., "near the beach", "close to a restaurant"), it identifies the category ("beach", "restaurant"). It geocodes the hotel and then uses the Geoapify Places API to find the *nearest* places of that specific type. It calculates routes (walking/distance) to these nearby places using OpenRouteService. Finally, an LLM evaluates the claim against the characteristics (distance, time) of these actual nearby locations to determine its validity
         *   **Web Search Checker (`fake_review_detection/agents/web_search_checker.py`):**
             *   **Target Claims:** Factual claims *not* related to `location_general`.
-            *   **Process:** Performs targeted Google Search and Google Image Search based on the claim and hotel name. It uses Sentence-BERT (SBERT) to find the most semantically relevant text snippets from search results and CLIP (Contrastive Language-Image Pre-training) to find the most relevant images. An LLM then analyzes this curated evidence to determine if the claim is supported, contradicted, or if there's insufficient evidence.
+            *   **Process:** Performs targeted Google web and image searches (through SerpApi) based on the claim and hotel name. It uses Sentence-BERT (SBERT) to find the most semantically relevant text snippets from search results and CLIP (Contrastive Language-Image Pre-training) to find the most relevant images. An LLM then analyzes this curated evidence to determine if the claim is supported, contradicted, or if there's insufficient evidence.
         *   **Opinion Checker (`fake_review_detection/agents/opinion_checker.py`):**
             *   **Target Claims:** Claims classified as `opinion` (regardless of specific type).
             *   **Process:** Compares the opinion claim against a database of pre-processed hotel reviews (stored as JSON files). It uses SBERT to find reviews or specific claims within reviews that are semantically similar to the target claim. An LLM then analyzes these similar claims to determine if they `support`, `contradict`, or are `neutral` towards the original claim. The final verdict for the opinion claim is based on aggregating these stances.
@@ -45,6 +45,7 @@ The project is organized into modular components for clarity and maintainability
     *   `clients/`: The code that talks to the outside world.
         *   `llm.py`: Calls the local Ollama model and constrains its answers to a JSON schema.
         *   `http_client.py` and `retry.py`: HTTP calls with retries, and Nominatim's limit of one request per second.
+        *   `search.py`: Google web and image results through SerpApi.
     *   `graph.py`: The LangGraph graph that runs the pipeline: claim extraction, one parallel check per claim, final judgment.
     *   `state.py`: The typed state shared by the graph's nodes.
     *   `config.py`: Settings: Ollama model, API keys, data and results folders.
@@ -77,7 +78,7 @@ The pipeline runs on [LangGraph](https://docs.langchain.com/oss/python/langgraph
     .venv\Scripts\activate          # on macOS or Linux: source .venv/bin/activate
     python -m pip install -r requirements.txt
     ```
-3.  Copy `.env.example` to `.env` and fill in the API keys (OpenRouteService, Geoapify, Google Custom Search).
+3.  Copy `.env.example` to `.env` and fill in the API keys: OpenRouteService, Geoapify and [SerpApi](https://serpapi.com). SerpApi's free plan gives 250 searches a month; each claim that goes to web search uses 2.
 4.  Put the review database in `data/reviews_with_claims/`, or set `REVIEWS_DIR` in `.env` to its location.
 5.  Run the README example, or your own review:
     ```bash
@@ -99,7 +100,13 @@ The first claim that goes to web search downloads the CLIP weights (about 900 MB
 python -m pytest
 ```
 
-`tests/test_equivalence.py` runs each scenario through the original code (a copy in `tests/legacy/`) and through the LangGraph version, with the same fake LLM answers and fake web services, and checks that both give the same results. `tests/test_ollama_schemas.py` checks that the local model answers in every format the pipeline asks for; it is skipped when Ollama is not running.
+`tests/test_equivalence.py` runs each scenario through the original code (a copy in `tests/legacy/`) and through the LangGraph version, with the same fake LLM answers and fake web services, and checks that both give the same results. `tests/test_ollama_schemas.py` checks that the local model answers in every format the pipeline asks for; it is skipped when Ollama is not running. `tests/test_search.py` checks the SerpApi client offline.
+
+`tests/test_search_live.py` calls the real SerpApi and spends 2 searches, so it only runs on request:
+
+```bash
+RUN_LIVE_SEARCH=1 python -m pytest tests/test_search_live.py     # PowerShell: $env:RUN_LIVE_SEARCH=1; python -m pytest tests/test_search_live.py
+```
 
 ## Key Features
 

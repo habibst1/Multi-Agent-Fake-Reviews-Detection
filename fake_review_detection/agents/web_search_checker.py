@@ -12,8 +12,9 @@ from PIL import Image
 from pydantic import ValidationError
 from sentence_transformers import util
 
-from fake_review_detection import config, models
+from fake_review_detection import models
 from fake_review_detection.clients import http_client, llm
+from fake_review_detection.clients import search as search_api
 from fake_review_detection.run_log import note_failure, with_reasons
 
 logger = logging.getLogger(__name__)
@@ -63,68 +64,21 @@ def split_text_into_chunks(text: str, max_words: int = 250) -> List[str]:
     return [c for c in chunks if len(c.split()) > 5]
 
 
-def google_search(query: str, num_results: int = 10) -> List[Dict[str, str]]:
-    """Search Google and return results with metadata"""
-    search_url = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": config.GOOGLE_API_KEY,
-        "cx": config.SEARCH_ENGINE_ID,
-        "q": query,
-        "num": num_results
-    }
+def web_search(query: str, num_results: int = 10) -> List[Dict[str, str]]:
+    """Search the web (Google results through SerpApi) and return results with metadata"""
     try:
-        response = http_client.get(search_url, params=params, timeout=10)
-        response.raise_for_status()
-        results = response.json()
-        search_results = []
-        if "items" in results:
-            for item in results["items"]:
-                snippet = item.get("snippet", "")
-                title = item.get("title", "")
-                url = item.get("link", "")
-                if snippet:
-                    search_results.append({
-                        'snippet': snippet,
-                        'title': title,
-                        'url': url
-                    })
-        return search_results
+        return search_api.web_search(query, num_results)
     except Exception as e:
-        note_failure(f"Error in Google Search: {e}")
+        note_failure(f"Error in web search: {e}")
         return []
 
 
-def google_image_search(query: str, num_results: int = 10) -> List[Dict[str, str]]:
-    """Search Google Images and return results with metadata"""
-    search_url = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": config.GOOGLE_API_KEY,
-        "cx": config.SEARCH_ENGINE_ID,
-        "q": query,
-        "num": num_results,
-        "searchType": "image"
-    }
+def image_search(query: str, num_results: int = 10) -> List[Dict[str, str]]:
+    """Search images (Google Images results through SerpApi) and return results with metadata"""
     try:
-        response = http_client.get(search_url, params=params, timeout=10)
-        response.raise_for_status()
-        results = response.json()
-        image_results = []
-        if "items" in results:
-            for item in results["items"]:
-                image_url = item.get("link", "")
-                title = item.get("title", "")
-                context_url = item.get("image", {}).get("contextLink", "")
-                snippet = item.get("snippet", "")
-                if image_url:
-                    image_results.append({
-                        'image_url': image_url,
-                        'title': title,
-                        'context_url': context_url,
-                        'snippet': snippet
-                    })
-        return image_results
+        return search_api.image_search(query, num_results)
     except Exception as e:
-        note_failure(f"Error in Google Image Search: {e}")
+        note_failure(f"Error in image search: {e}")
         return []
 
 
@@ -501,7 +455,7 @@ def _no_evidence_result(claim_id, error, search_query, sources_found):
 
 
 def search(state: WebState) -> Dict[str, Any]:
-    """Search Google for text and images about the claim."""
+    """Search the web for text and images about the claim."""
     hotel_name = state.get("hotel_name")
     claim_text = state.get("claim_text")
     claim_id = state.get("claim_id")
@@ -521,9 +475,9 @@ def search(state: WebState) -> Dict[str, Any]:
     logger.info(f"🔎 Search Query: {search_query}")
     logger.info("-" * 80)
     logger.info("📚 Searching for text evidence...")
-    search_results = google_search(search_query, num_results=10)
+    search_results = web_search(search_query, num_results=10)
     logger.info("🖼️  Searching for visual evidence...")
-    image_results = google_image_search(search_query, num_results=10)
+    image_results = image_search(search_query, num_results=10)
 
     if not search_results and not image_results:
         logger.info("❌ No search results found")
