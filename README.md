@@ -53,15 +53,13 @@ The project is organized into modular components for clarity and maintainability
     *   `run_log.py`: Log lines tagged with their claim, failure reasons added to error messages, and API keys kept out of both.
 *   `tests/`: Equivalence tests against the original pipeline, and answer-format checks against the local model.
 *   `docs/graph.md`: Diagrams of every graph, generated from the code with `python -m fake_review_detection.graph`.
-*   `docs/examples/`: A saved run of the original pipeline (Groq models, September 2025).
 *   `.env`: (Not included in repo) Stores sensitive API keys required for external services. See `.env.example`.
 
 These folders stay on your machine and are not in the repository:
 
 *   `data/reviews/`: The scraped Booking.com reviews (12 hotels).
 *   `data/reviews_with_claims/`: The same reviews with their extracted claims (5 hotels), used by the opinion checker.
-*   `notebooks/`: The notebooks that scrape the reviews, extract their claims and try the claim verification.
-*   `archive/`: The original technical documentation.
+*   `notebooks/`: The notebooks that scrape the reviews and extract their claims.
 *   `results/`: The results of each run.
 
 ## Setup and Usage

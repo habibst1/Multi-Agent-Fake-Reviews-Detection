@@ -6,10 +6,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Local data, notebooks and old documents (the test fixtures under tests/ are synthetic and tracked)
+# Local data and notebooks (the test fixtures under tests/ are synthetic and tracked)
 /data/
 /notebooks/
-/archive/
 
 # Results saved by main.py
 /results/
