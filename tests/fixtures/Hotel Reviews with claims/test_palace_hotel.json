@@ -1,0 +1,34 @@
+[
+    {
+        "title": "Synthetic review 1",
+        "rating": "Scored 9",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 1 February 2026",
+        "claims": [
+            {"claim_text": "The lobby was spotless and smelled fresh", "claim_type": "hotel_cleanliness", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "The neighborhood felt safe at night", "claim_type": "location_general", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Breakfast was cold and the eggs were dry", "claim_type": "food_drinks_quality", "claim_nature": "opinion", "claim_polarity": "negative"}
+        ]
+    },
+    {
+        "title": "Synthetic review 2",
+        "rating": "Scored 3",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 2 February 2026",
+        "claims": [
+            {"claim_text": "Dusty corners everywhere in the lobby", "claim_type": "hotel_cleanliness", "claim_nature": "opinion", "claim_polarity": "negative"},
+            {"claim_text": "The street outside was noisy and unsafe", "claim_type": "location_general", "claim_nature": "opinion", "claim_polarity": "negative"},
+            {"claim_text": "Warm and tasty breakfast every morning", "claim_type": "food_drinks_quality", "claim_nature": "opinion", "claim_polarity": "positive"}
+        ]
+    },
+    {
+        "title": "Synthetic review 3",
+        "rating": "Scored 8",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 3 February 2026",
+        "claims": [
+            {"claim_text": "Housekeeping kept the whole hotel very clean", "claim_type": "hotel_cleanliness", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Quiet and calm area around the hotel", "claim_type": "location_general", "claim_nature": "opinion", "claim_polarity": "positive"}
+        ]
+    }
+]

@@ -1,0 +1,30 @@
+# Install into a virtual environment:  python -m pip install -r requirements.txt
+
+# PyTorch CPU wheels: CLIP and SBERT run on the CPU, the GPU stays free for Ollama
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.12.0
+torchvision==0.27.0
+
+# Graph and local LLM
+langgraph==1.2.19
+langchain-core==1.7.6
+langchain-ollama==1.1.0
+pydantic==2.14.3
+
+# Embeddings and image matching
+sentence-transformers==6.2.0
+transformers==5.22.1
+clip @ git+https://github.com/openai/CLIP.git@d05afc436d78f1c48dc0dbf8e5980a9d471f35f6
+ftfy==6.3.1
+regex==2026.9.29
+tqdm==4.70.1
+packaging==26.3
+
+# Data sources and utilities
+fuzzywuzzy==0.18.0
+python-dotenv==1.2.4
+requests==2.34.2
+pillow==13.0.0
+
+# Tests
+pytest==9.2.0

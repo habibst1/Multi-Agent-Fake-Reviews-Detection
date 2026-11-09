@@ -1,12 +1,14 @@
 # Ignore environment variables file
 .env
 
-agents/__pycache__
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
 
-# Ignore the Hotel Reviews data folder
-Hotel Reviews with claims/
+# Local data and notebooks (the test fixtures under tests/ are synthetic and tracked)
+/data/
+/notebooks/
 
-Final Pipeline/
-
-context.txt
-
+# Results saved by main.py
+/results/

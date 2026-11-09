@@ -1,0 +1,58 @@
+[
+    {
+        "title": "Synthetic review 1",
+        "rating": "Scored 9",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 1 January 2026",
+        "claims": [
+            {"claim_text": "Positive: The staff were attentive and kind", "claim_type": "service_general", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Service was excellent from check-in to check-out", "claim_type": "service_general", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Good value for money for a stay like this", "claim_type": "hotel_prices", "claim_nature": "opinion", "claim_polarity": "positive"}
+        ]
+    },
+    {
+        "title": "Synthetic review 2",
+        "rating": "Scored 4",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 2 January 2026",
+        "claims": [
+            {"claim_text": "Negative: Prices are far too high for what you get", "claim_type": "hotel_prices", "claim_nature": "opinion", "claim_polarity": "negative"},
+            {"claim_text": "The staff ignored our requests twice", "claim_type": "service_general", "claim_nature": "opinion", "claim_polarity": "negative"},
+            {"claim_text": "Dinner was bland and served cold", "claim_type": "food_drinks_quality", "claim_nature": "opinion", "claim_polarity": "negative"}
+        ]
+    },
+    {
+        "title": "Synthetic review 3",
+        "rating": "Scored 8",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 3 January 2026",
+        "claims": [
+            {"claim_text": "The room furniture looked old and worn", "claim_type": "rooms_design_and_features", "claim_nature": "opinion", "claim_polarity": "negative"},
+            {"claim_text": "Modern and beautifully designed suites", "claim_type": "rooms_design_and_features", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "The food was delicious every single day", "claim_type": "food_drinks_quality", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "The hotel is right next to the beach", "claim_type": "location_general", "claim_nature": "factual", "claim_polarity": "neutral"}
+        ]
+    },
+    {
+        "title": "Synthetic review 4",
+        "rating": "Scored 10",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 4 January 2026",
+        "claims": [
+            {"claim_text": "Breakfast buffet had great quality and choice", "claim_type": "food_drinks_quality", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Nice", "claim_type": "hotel_general", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Negative: no comments to add", "claim_type": "hotel_general", "claim_nature": "opinion", "claim_polarity": "negative"},
+            {"claim_text": "The rooms   feel dated   and need renovation", "claim_type": "rooms_design_and_features", "claim_nature": "opinion", "claim_polarity": "negative"}
+        ]
+    },
+    {
+        "title": "Synthetic review 5",
+        "rating": "Scored 7",
+        "text": "Synthetic test data, not a real review.",
+        "date": "Reviewed: 5 January 2026",
+        "claims": [
+            {"claim_text": "Positive: The staff were attentive and kind", "claim_type": "service_general", "claim_nature": "opinion", "claim_polarity": "positive"},
+            {"claim_text": "Very expensive compared to newer hotels", "claim_type": "hotel_prices", "claim_nature": "opinion", "claim_polarity": "negative"}
+        ]
+    }
+]
